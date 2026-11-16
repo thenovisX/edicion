@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -31,3 +34,17 @@ jobs:
           name: edicion-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      # Publica el APK como descarga directa (se sustituye en cada compilación).
+      - name: Publicar APK en Releases
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk edicion.apk
+          gh release delete ultima --yes --cleanup-tag || true
+          gh release create ultima edicion.apk \
+            --target "$GITHUB_SHA" \
+            --title "Última compilación" \
+            --notes "APK de prueba generado automáticamente desde $GITHUB_SHA." \
+            --prerelease

@@ -23,9 +23,10 @@ más usados) y la hoja de ruta por etapas está en [docs/FUNCIONES.md](docs/FUNC
 
 ## Cómo conseguir el APK
 
-Cada push compila la app en GitHub Actions. En la pestaña **Actions** del repositorio,
-abre la última ejecución de "Compilar APK" y descarga el artefacto `edicion-debug-apk`.
-Instálalo en el móvil (hay que permitir "instalar apps desconocidas").
+Cada push compila la app en GitHub Actions y publica el APK en
+[Releases](https://github.com/thenovisX/edicion/releases/tag/ultima). Descarga directa:
+<https://github.com/thenovisX/edicion/releases/download/ultima/edicion.apk>.
+Para instalarlo hay que permitir "instalar apps desconocidas" en el móvil.
 
 ## Estructura
 
