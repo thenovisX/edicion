@@ -226,6 +226,65 @@ object Timeline {
     fun updateText(project: Project, id: String, transform: (TextLayer) -> TextLayer): Project =
         project.copy(texts = project.texts.map { if (it.id == id) transform(it) else it }).clampTexts()
 
+    /**
+     * Cambia posición, tamaño, giro u opacidad de una capa en el instante [timeMs]. Si la capa
+     * tiene fotogramas clave se crea o actualiza el del cabezal; si no, cambian sus valores fijos.
+     */
+    fun setLayerPose(project: Project, id: String, timeMs: Long, transform: (Keyframe) -> Keyframe): Project =
+        updateText(project, id) { l ->
+            if (l.keyframes.isEmpty()) {
+                val k = clampPose(transform(l.basePose))
+                l.copy(x = k.x, y = k.y, scale = k.scale, rotation = k.rotation, opacity = k.opacity)
+            } else {
+                val rel = (timeMs - l.startMs).coerceIn(0, l.durationMs)
+                val k = clampPose(transform(LayerMath.poseAt(l, timeMs))).copy(tMs = rel)
+                val near = LayerMath.keyframeNear(l, timeMs)
+                l.copy(keyframes = (l.keyframes.filterNot { it === near } + k.copy(tMs = near?.tMs ?: rel)).sortedBy { it.tMs })
+            }
+        }
+
+    /** Añade un fotograma clave en [timeMs] con el estado actual, o lo quita si ya había uno. */
+    fun toggleKeyframe(project: Project, id: String, timeMs: Long): Project =
+        updateText(project, id) { l ->
+            val near = LayerMath.keyframeNear(l, timeMs)
+            if (near != null) {
+                val rest = l.keyframes.filterNot { it === near }
+                // Al quitar el último, la capa se queda fija donde estaba.
+                if (rest.isEmpty()) l.copy(keyframes = rest, x = near.x, y = near.y, scale = near.scale, rotation = near.rotation, opacity = near.opacity)
+                else l.copy(keyframes = rest)
+            } else {
+                val rel = (timeMs - l.startMs).coerceIn(0, l.durationMs)
+                l.copy(keyframes = (l.keyframes + LayerMath.poseAt(l, timeMs).copy(tMs = rel)).sortedBy { it.tMs })
+            }
+        }
+
+    private fun clampPose(k: Keyframe) = k.copy(
+        x = k.x.coerceIn(-1f, 1f),
+        y = k.y.coerceIn(-1f, 1f),
+        scale = k.scale.coerceIn(0.05f, 8f),
+        opacity = k.opacity.coerceIn(0f, 1f),
+    )
+
+    /** Divide una capa en dos en [timeMs], repartiendo sus fotogramas clave. */
+    fun splitLayerAt(project: Project, id: String, timeMs: Long, newId: String): Project {
+        val l = project.texts.firstOrNull { it.id == id } ?: return project
+        if (timeMs <= l.startMs || timeMs >= l.endMs) return project
+        val rel = timeMs - l.startMs
+        val cut = LayerMath.poseAt(l, timeMs)
+        val hasKeys = l.keyframes.isNotEmpty()
+        val first = l.copy(
+            endMs = timeMs,
+            keyframes = if (hasKeys) l.keyframes.filter { it.tMs < rel } + cut.copy(tMs = rel) else emptyList(),
+        )
+        val second = l.copy(
+            id = newId,
+            startMs = timeMs,
+            trimStartMs = if (l.isVideo) l.trimStartMs + rel else l.trimStartMs,
+            keyframes = if (hasKeys) listOf(cut.copy(tMs = 0)) + l.keyframes.filter { it.tMs > rel }.map { it.copy(tMs = it.tMs - rel) } else emptyList(),
+        )
+        return project.copy(texts = project.texts.flatMap { if (it.id == id) listOf(first, second) else listOf(it) }).clampTexts()
+    }
+
     fun removeText(project: Project, id: String): Project =
         project.copy(texts = project.texts.filterNot { it.id == id })
 

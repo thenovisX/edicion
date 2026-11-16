@@ -32,6 +32,10 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.CropFree
+import androidx.compose.material.icons.filled.Diamond
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flip
@@ -74,6 +78,10 @@ import com.thenovisx.edicion.core.TransitionType
 import com.thenovisx.edicion.core.MAX_IMAGE_DURATION_MS
 import com.thenovisx.edicion.core.MIN_CLIP_DURATION_MS
 import com.thenovisx.edicion.core.MediaKind
+import com.thenovisx.edicion.core.TextLayer
+import com.thenovisx.edicion.core.LayerShape
+import com.thenovisx.edicion.core.LayerMath
+import com.thenovisx.edicion.core.Keyframe
 import com.thenovisx.edicion.core.Project
 import com.thenovisx.edicion.core.formatTime
 import com.thenovisx.edicion.ui.common.AdjustmentSliders
@@ -128,6 +136,7 @@ fun ToolArea(
     onAddText: () -> Unit,
     onEditText: (String) -> Unit,
     onAddSticker: () -> Unit,
+    onSubtitles: () -> Unit,
     onAddMediaLayer: () -> Unit,
     onReplaceLayer: (String) -> Unit,
     onVoice: () -> Unit,
@@ -156,7 +165,7 @@ fun ToolArea(
                     .padding(horizontal = 12.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                PanelContent(panel, project, state.selection, vm)
+                PanelContent(panel, project, state.selection, vm, state.playheadMs)
             }
         } else {
             Row(
@@ -172,6 +181,7 @@ fun ToolArea(
                         Tool("Texto", Icons.Default.TextFields, Palette.Violet, onClick = onAddText)
                         Tool("Sticker", Icons.Default.EmojiEmotions, Palette.Amber, onClick = onAddSticker)
                         Tool("Capa", Icons.Default.Layers, Palette.Pink, onClick = onAddMediaLayer)
+                        Tool("Subtítulos", Icons.Default.Subtitles, Palette.Blue, onClick = onSubtitles)
                         Tool("Música", Icons.Default.LibraryMusic, Palette.Teal, onClick = onAddAudio)
                         Tool("Voz", Icons.Default.Mic, Palette.Green, onClick = onVoice)
                         Tool("Dividir", Icons.Default.ContentCut, Palette.Blue, onClick = vm::splitAtPlayhead)
@@ -216,6 +226,18 @@ fun ToolArea(
                             Tool("Editar", Icons.Default.Edit) { onEditText(sel.id) }
                             Tool("Estilo", Icons.Default.FormatSize) { onPanel(Panel.TEXT_STYLE) }
                         }
+                        if (layer != null && !layer.isMedia && !layer.isSticker) {
+                            Tool("Leer voz", Icons.Default.RecordVoiceOver, Palette.Green) { vm.speakLayer(sel.id) }
+                        }
+                        if (layer?.isSubtitle == true) {
+                            Tool("A todos", Icons.Default.DoneAll, Palette.Blue) { vm.applyStyleToSubtitles(sel.id) }
+                        }
+                        val onKey = layer != null && LayerMath.keyframeNear(layer, state.playheadMs) != null
+                        Tool(
+                            if (onKey) "Quitar clave" else "Fotog. clave",
+                            Icons.Default.Diamond,
+                            if (onKey) Palette.Coral else Palette.Amber,
+                        ) { vm.toggleKeyframe(sel.id) }
                         Tool("Posición", Icons.Default.OpenWith) { onPanel(Panel.TEXT_POSITION) }
                         Tool("Tiempo", Icons.Default.Timer) { onPanel(Panel.TEXT_TIME) }
                         Tool("Animación", Icons.Default.Animation) { onPanel(Panel.LAYER_ANIM) }
@@ -256,10 +278,12 @@ private fun Tool(label: String, icon: ImageVector, tint: Color = Palette.OnSurfa
 }
 
 @Composable
-private fun PanelContent(panel: Panel, project: Project, selection: Selection, vm: EditorViewModel) {
+private fun PanelContent(panel: Panel, project: Project, selection: Selection, vm: EditorViewModel, playheadMs: Long) {
     val clip = (selection as? Selection.VideoClip)?.let { s -> project.clips.firstOrNull { it.id == s.id } }
     val audio = (selection as? Selection.Audio)?.let { s -> project.audio.firstOrNull { it.id == s.id } }
     val text = (selection as? Selection.Text)?.let { s -> project.texts.firstOrNull { it.id == s.id } }
+    // Con fotogramas clave, los deslizadores muestran y cambian el estado en el cabezal.
+    val pose = text?.let { LayerMath.poseAt(it, playheadMs) } ?: Keyframe(0, 0f, 0f, 1f, 0f, 1f)
 
     when (panel) {
         Panel.FORMAT -> Row(
@@ -545,28 +569,45 @@ private fun PanelContent(panel: Panel, project: Project, selection: Selection, v
 
         Panel.IMAGE_STYLE -> if (text != null) {
             Column {
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    LayerShape.entries.forEach { sh ->
+                        FilterChip(
+                            selected = text.shape == sh,
+                            onClick = { vm.updateText(text.id) { it.copy(shape = sh) } },
+                            label = { Text(sh.label) },
+                        )
+                    }
+                    FilterChip(
+                        selected = text.flipH,
+                        onClick = { vm.updateText(text.id) { it.copy(flipH = !it.flipH) } },
+                        label = { Text("Voltear") },
+                    )
+                }
                 LabeledSlider(
                     label = "Tamaño",
-                    valueText = "${(text.scale * 100).roundToInt()} %",
-                    value = text.scale,
+                    valueText = "${(pose.scale * 100).roundToInt()} %",
+                    value = pose.scale,
                     range = 0.1f..3f,
-                    onChange = { v -> vm.updateText(text.id, live = true) { it.copy(scale = v) } },
+                    onChange = { v -> vm.updatePose(text.id) { it.copy(scale = v) } },
                     onDone = vm::commitLive,
                 )
                 LabeledSlider(
                     label = "Opacidad",
-                    valueText = "${(text.opacity * 100).roundToInt()} %",
-                    value = text.opacity,
+                    valueText = "${(pose.opacity * 100).roundToInt()} %",
+                    value = pose.opacity,
                     range = 0f..1f,
-                    onChange = { v -> vm.updateText(text.id, live = true) { it.copy(opacity = v) } },
+                    onChange = { v -> vm.updatePose(text.id) { it.copy(opacity = v) } },
                     onDone = vm::commitLive,
                 )
                 LabeledSlider(
                     label = "Rotación",
-                    valueText = "${text.rotation.roundToInt()}°",
-                    value = text.rotation,
+                    valueText = "${pose.rotation.roundToInt()}°",
+                    value = pose.rotation,
                     range = -180f..180f,
-                    onChange = { v -> vm.updateText(text.id, live = true) { it.copy(rotation = v) } },
+                    onChange = { v -> vm.updatePose(text.id) { it.copy(rotation = v) } },
                     onDone = vm::commitLive,
                 )
             }
@@ -574,6 +615,20 @@ private fun PanelContent(panel: Panel, project: Project, selection: Selection, v
 
         Panel.TEXT_STYLE -> if (text != null) {
             Column(Modifier.padding(bottom = 4.dp)) {
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Estilos", fontSize = 12.sp)
+                    TextStyles.forEach { st ->
+                        FilterChip(
+                            selected = false,
+                            onClick = { vm.updateText(text.id) { st.apply(it) } },
+                            label = { Text(st.label) },
+                        )
+                    }
+                }
                 Row(
                     Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -588,10 +643,10 @@ private fun PanelContent(panel: Panel, project: Project, selection: Selection, v
                 }
                 LabeledSlider(
                     label = "Tamaño",
-                    valueText = "${(text.scale * 100).roundToInt()} %",
-                    value = text.scale,
+                    valueText = "${(pose.scale * 100).roundToInt()} %",
+                    value = pose.scale,
                     range = 0.4f..3f,
-                    onChange = { v -> vm.updateText(text.id, live = true) { it.copy(scale = v) } },
+                    onChange = { v -> vm.updatePose(text.id) { it.copy(scale = v) } },
                     onDone = vm::commitLive,
                 )
                 Row(
@@ -648,18 +703,18 @@ private fun PanelContent(panel: Panel, project: Project, selection: Selection, v
                 }
                 LabeledSlider(
                     label = "Opacidad",
-                    valueText = "${(text.opacity * 100).roundToInt()} %",
-                    value = text.opacity,
+                    valueText = "${(pose.opacity * 100).roundToInt()} %",
+                    value = pose.opacity,
                     range = 0f..1f,
-                    onChange = { v -> vm.updateText(text.id, live = true) { it.copy(opacity = v) } },
+                    onChange = { v -> vm.updatePose(text.id) { it.copy(opacity = v) } },
                     onDone = vm::commitLive,
                 )
                 LabeledSlider(
                     label = "Rotación",
-                    valueText = "${text.rotation.roundToInt()}°",
-                    value = text.rotation,
+                    valueText = "${pose.rotation.roundToInt()}°",
+                    value = pose.rotation,
                     range = -180f..180f,
-                    onChange = { v -> vm.updateText(text.id, live = true) { it.copy(rotation = v) } },
+                    onChange = { v -> vm.updatePose(text.id) { it.copy(rotation = v) } },
                     onDone = vm::commitLive,
                 )
             }
@@ -669,18 +724,18 @@ private fun PanelContent(panel: Panel, project: Project, selection: Selection, v
             Column {
                 LabeledSlider(
                     label = "Horizontal",
-                    valueText = "${(text.x * 100).roundToInt()}",
-                    value = text.x,
+                    valueText = "${(pose.x * 100).roundToInt()}",
+                    value = pose.x,
                     range = -1f..1f,
-                    onChange = { v -> vm.updateText(text.id, live = true) { it.copy(x = v) } },
+                    onChange = { v -> vm.updatePose(text.id) { it.copy(x = v) } },
                     onDone = vm::commitLive,
                 )
                 LabeledSlider(
                     label = "Vertical",
-                    valueText = "${(text.y * 100).roundToInt()}",
-                    value = text.y,
+                    valueText = "${(pose.y * 100).roundToInt()}",
+                    value = pose.y,
                     range = -1f..1f,
-                    onChange = { v -> vm.updateText(text.id, live = true) { it.copy(y = v) } },
+                    onChange = { v -> vm.updatePose(text.id) { it.copy(y = v) } },
                     onDone = vm::commitLive,
                 )
             }
@@ -724,6 +779,21 @@ private fun sliderToSpeed(v: Float): Float {
 }
 
 private fun speedToSlider(s: Float): Float = (Math.log((s / 0.25f).toDouble()) / Math.log(16.0)).toFloat().coerceIn(0f, 1f)
+
+/** Estilo de texto listo para aplicar con un toque. */
+private class TextStyle(val label: String, val apply: (TextLayer) -> TextLayer)
+
+private val TextStyles = listOf(
+    TextStyle("Clásico") { it.copy(colorArgb = 0xFFFFFFFF, backgroundArgb = 0, outlineArgb = 0, shadow = true, bold = true, italic = false, font = TextFont.SANS) },
+    TextStyle("Título") { it.copy(colorArgb = 0xFFFFFFFF, backgroundArgb = 0, outlineArgb = 0xFF000000, shadow = false, bold = true, italic = false, font = TextFont.CONDENSED) },
+    TextStyle("Subtítulo") { it.copy(colorArgb = 0xFFFFFFFF, backgroundArgb = 0x99000000, outlineArgb = 0, shadow = false, bold = true, italic = false, font = TextFont.SANS) },
+    TextStyle("Etiqueta") { it.copy(colorArgb = 0xFF000000, backgroundArgb = 0xFFFFFFFF, outlineArgb = 0, shadow = false, bold = true, italic = false, font = TextFont.SANS) },
+    TextStyle("Amarillo") { it.copy(colorArgb = 0xFFFFE14D, backgroundArgb = 0, outlineArgb = 0xFF000000, shadow = false, bold = true, italic = false, font = TextFont.SANS) },
+    TextStyle("Neón") { it.copy(colorArgb = 0xFF4DFFD2, backgroundArgb = 0, outlineArgb = 0xFF7A3CFF, shadow = true, bold = true, italic = false, font = TextFont.ROUNDED) },
+    TextStyle("Elegante") { it.copy(colorArgb = 0xFFFFF4E0, backgroundArgb = 0, outlineArgb = 0, shadow = true, bold = false, italic = true, font = TextFont.SERIF) },
+    TextStyle("Máquina") { it.copy(colorArgb = 0xFFFFFFFF, backgroundArgb = 0xCC000000, outlineArgb = 0, shadow = false, bold = false, italic = false, font = TextFont.MONO) },
+    TextStyle("Nota") { it.copy(colorArgb = 0xFF1B1B1B, backgroundArgb = 0xFFFFE14D, outlineArgb = 0, shadow = false, bold = false, italic = false, font = TextFont.CURSIVE) },
+)
 
 @Composable
 private fun ColorDot(argb: Long, selected: Boolean, onClick: () -> Unit) {

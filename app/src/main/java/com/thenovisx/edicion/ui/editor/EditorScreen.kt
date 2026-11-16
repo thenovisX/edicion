@@ -44,7 +44,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -107,6 +106,10 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
         if (uri != null && id != null) vm.replaceLayerMedia(id, uri)
     }
     var showStickers by remember { mutableStateOf(false) }
+    var showSubtitles by remember { mutableStateOf(false) }
+    val pickSrt = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.importSrt(uri)
+    }
     val recording by vm.recording.collectAsState()
     var showVoice by remember { mutableStateOf(false) }
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -208,13 +211,8 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
                             selection = state.selection,
                             onSelect = { vm.select(it); panel = null },
                             onTransform = { id, pan, zoom, rotation ->
-                                vm.updateText(id, live = true) {
-                                    it.copy(
-                                        x = (it.x + pan.x).coerceIn(-1f, 1f),
-                                        y = (it.y + pan.y).coerceIn(-1f, 1f),
-                                        scale = it.scale * zoom,
-                                        rotation = it.rotation + rotation,
-                                    )
+                                vm.updatePose(id) {
+                                    it.copy(x = it.x + pan.x, y = it.y + pan.y, scale = it.scale * zoom, rotation = it.rotation + rotation)
                                 }
                             },
                             onTransformEnd = vm::commitLive,
@@ -302,6 +300,7 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
                 onAddText = { textDialog = TextDialogMode.Add },
                 onEditText = { id -> textDialog = TextDialogMode.Edit(id) },
                 onAddSticker = { showStickers = true },
+                onSubtitles = { showSubtitles = true },
                 onAddMediaLayer = {
                     pickLayerMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
                 },
@@ -321,6 +320,14 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
     }
 
     // ---------- Diálogos ----------
+
+    if (showSubtitles) {
+        SubtitlesDialog(
+            onDismiss = { showSubtitles = false },
+            onConfirm = { vm.addSubtitles(it); showSubtitles = false },
+            onImport = { showSubtitles = false; pickSrt.launch(arrayOf("*/*")) },
+        )
+    }
 
     if (showStickers) {
         StickerDialog(
@@ -497,6 +504,31 @@ private fun ExportOptionsDialog(onDismiss: () -> Unit, onExport: (ExportOptions)
             }
         },
         confirmButton = { TextButton(onClick = { onExport(ExportOptions(selected, hevc, quality)) }) { Text("Exportar") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
+}
+
+@Composable
+private fun SubtitlesDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit, onImport: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Subtítulos") },
+        text = {
+            Column {
+                Text(
+                    "Escribe una frase por línea. Se colocan seguidas a partir del cabezal y luego puedes ajustar cada una.",
+                    fontSize = 12.sp, color = Palette.OnSurfaceMuted,
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    modifier = Modifier.fillMaxWidth().height(160.dp).padding(top = 8.dp),
+                )
+                TextButton(onClick = onImport) { Text("Importar archivo .srt") }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(text) }, enabled = text.isNotBlank()) { Text("Crear") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )
 }

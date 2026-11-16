@@ -116,6 +116,32 @@ enum class LayerAnim(val label: String) {
     TYPEWRITER("Máquina de escribir"),
 }
 
+/** Forma con la que se recorta una capa de imagen o vídeo. */
+@Serializable
+enum class LayerShape(val label: String) {
+    NONE("Rectángulo"),
+    ROUNDED("Redondeado"),
+    CIRCLE("Círculo"),
+    DIAMOND("Rombo"),
+    HEXAGON("Hexágono"),
+    STAR("Estrella"),
+    HEART("Corazón"),
+}
+
+/**
+ * Fotograma clave de una capa: su posición, tamaño, giro y opacidad en un instante
+ * ([tMs] es relativo al inicio de la capa). Entre dos fotogramas clave se interpola.
+ */
+@Serializable
+data class Keyframe(
+    val tMs: Long,
+    val x: Float,
+    val y: Float,
+    val scale: Float,
+    val rotation: Float,
+    val opacity: Float,
+)
+
 /**
  * Ajustes de color normalizados. Todos los valores van de -1 a 1 y 0 es neutro.
  */
@@ -262,7 +288,16 @@ data class TextLayer(
     val hasAudio: Boolean = false,
     /** Imagen o vídeo: proporción ancho/alto del contenido. */
     val aspect: Float = 1f,
+    /** Movimiento con fotogramas clave. Vacío = la capa usa sus valores fijos. */
+    val keyframes: List<Keyframe> = emptyList(),
+    /** Imagen o vídeo: forma de recorte y volteo horizontal. */
+    val shape: LayerShape = LayerShape.NONE,
+    val flipH: Boolean = false,
+    /** Marca las capas creadas como subtítulos, para poder darles estilo a todas a la vez. */
+    val isSubtitle: Boolean = false,
 ) {
+    /** Valores fijos de la capa como fotograma clave. */
+    val basePose: Keyframe get() = Keyframe(0, x, y, scale, rotation, opacity)
     val isImage: Boolean get() = imageUri != null
     val isVideo: Boolean get() = videoUri != null
     /** Capa de imagen o vídeo (frente a texto o sticker). */
@@ -303,3 +338,5 @@ const val LANE_LAYER_BASE = 100
 /** Tamaño base de texto (fracción del alto) y de imagen/vídeo (fracción del ancho) con escala 1. */
 const val TEXT_BASE_HEIGHT = 0.045f
 const val MEDIA_BASE_WIDTH = 0.4f
+/** Margen para considerar que el cabezal está sobre un fotograma clave. */
+const val KEYFRAME_SNAP_MS = 60L

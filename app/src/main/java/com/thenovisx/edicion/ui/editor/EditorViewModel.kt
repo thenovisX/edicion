@@ -16,6 +16,12 @@ import com.thenovisx.edicion.core.TextLayer
 import com.thenovisx.edicion.core.Timeline
 import com.thenovisx.edicion.data.ProjectRepository
 import com.thenovisx.edicion.media.ExportOptions
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import com.thenovisx.edicion.media.Speech
+import com.thenovisx.edicion.core.Cue
+import com.thenovisx.edicion.core.Subtitles
+import com.thenovisx.edicion.core.Keyframe
 import com.thenovisx.edicion.media.MediaImporter
 import com.thenovisx.edicion.media.PreviewEngine
 import com.thenovisx.edicion.media.VideoExporter
@@ -272,13 +278,10 @@ class EditorViewModel(app: Application, savedState: SavedStateHandle) : AndroidV
             is Selection.Text -> {
                 val layer = currentProject()?.texts?.firstOrNull { it.id == s.id } ?: return
                 if (t <= layer.startMs || t >= layer.endMs) {
-                    toast("Coloca el cabezal dentro del texto para dividirlo")
+                    toast("Coloca el cabezal dentro de la capa para dividirla")
                     return
                 }
-                edit { p ->
-                    val first = Timeline.updateText(p, layer.id) { it.copy(endMs = t) }
-                    Timeline.addText(first, layer.copy(id = MediaImporter.newId(), startMs = t))
-                }
+                edit { Timeline.splitLayerAt(it, layer.id, t, MediaImporter.newId()) }
             }
             else -> {
                 var newId: String? = null
@@ -365,7 +368,7 @@ class EditorViewModel(app: Application, savedState: SavedStateHandle) : AndroidV
             updateText(id) { old ->
                 mediaLayer(media, old.id, old.startMs, old.endMs).copy(
                     x = old.x, y = old.y, scale = old.scale, opacity = old.opacity, rotation = old.rotation,
-                    animIn = old.animIn, animOut = old.animOut,
+                    animIn = old.animIn, animOut = old.animOut, keyframes = old.keyframes, shape = old.shape, flipH = old.flipH,
                 )
             }
         }
@@ -383,6 +386,95 @@ class EditorViewModel(app: Application, savedState: SavedStateHandle) : AndroidV
         hasAudio = m.hasAudio,
         aspect = m.aspect,
     )
+
+    /** Cambia posición, tamaño, giro u opacidad en el cabezal (respeta los fotogramas clave). */
+    fun updatePose(id: String, transform: (Keyframe) -> Keyframe) {
+        val t = _state.value.playheadMs
+        live { Timeline.setLayerPose(it, id, t, transform) }
+    }
+
+    fun toggleKeyframe(id: String) {
+        val t = _state.value.playheadMs
+        val layer = currentProject()?.texts?.firstOrNull { it.id == id } ?: return
+        if (!layer.isVisibleAt(t) && t != layer.endMs) {
+            toast("Coloca el cabezal dentro de la capa")
+            return
+        }
+        edit { Timeline.toggleKeyframe(it, id, t) }
+    }
+
+    /** Crea subtítulos a partir de líneas escritas, seguidos desde el cabezal. */
+    fun addSubtitles(text: String) {
+        val p = currentProject() ?: return
+        if (p.clips.isEmpty()) {
+            toast("Añade primero un vídeo o una foto")
+            return
+        }
+        val cues = Subtitles.fromLines(text, _state.value.playheadMs.coerceAtMost((p.durationMs - 500).coerceAtLeast(0)), p.durationMs)
+        addCues(cues)
+    }
+
+    fun importSrt(uri: Uri) {
+        viewModelScope.launch {
+            val content = withContext(Dispatchers.IO) {
+                runCatching {
+                    getApplication<Application>().contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }
+                }.getOrNull()
+            }
+            val cues = content?.let { Subtitles.parseSrt(it) }.orEmpty()
+            if (cues.isEmpty()) toast("No se encontraron subtítulos en el archivo") else addCues(cues)
+        }
+    }
+
+    private fun addCues(cues: List<Cue>) {
+        val p = currentProject() ?: return
+        val usable = cues.filter { it.startMs < p.durationMs }
+        if (usable.isEmpty()) {
+            toast("No caben subtítulos a partir de este punto")
+            return
+        }
+        // Los nuevos heredan el estilo de los subtítulos que ya hubiera.
+        val style = p.texts.lastOrNull { it.isSubtitle }
+        val layers = usable.map { c ->
+            (style ?: TextLayer(
+                id = "", text = "", startMs = 0, endMs = 0, y = 0.72f, scale = 0.9f,
+                backgroundArgb = 0x99000000, isSubtitle = true,
+            )).copy(id = MediaImporter.newId(), text = c.text, startMs = c.startMs, endMs = c.endMs, keyframes = emptyList())
+        }
+        edit { layers.fold(it) { acc, l -> Timeline.addText(acc, l) } }
+        select(Selection.Text(layers.first().id))
+        toast("${layers.size} subtítulos añadidos")
+    }
+
+    /** Copia el estilo de un subtítulo a todos los demás. */
+    fun applyStyleToSubtitles(id: String) {
+        val src = currentProject()?.texts?.firstOrNull { it.id == id } ?: return
+        edit { p ->
+            p.copy(texts = p.texts.map { l ->
+                if (!l.isSubtitle || l.id == id) l
+                else src.copy(id = l.id, text = l.text, startMs = l.startMs, endMs = l.endMs)
+            })
+        }
+        toast("Estilo aplicado a todos los subtítulos")
+    }
+
+    /** Lee en voz alta el texto de una capa y coloca el audio en la pista de voz. */
+    fun speakLayer(id: String) {
+        val layer = currentProject()?.texts?.firstOrNull { it.id == id } ?: return
+        if (layer.text.isBlank()) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(importing = true)
+            val file = Speech.synthesize(getApplication(), layer.text)
+            val clip = file?.let { importer.importVoice(it, "Voz: ${layer.text.take(16)}") }
+            _state.value = _state.value.copy(importing = false)
+            if (clip == null) {
+                toast("El teléfono no tiene un motor de texto a voz disponible")
+                return@launch
+            }
+            edit { Timeline.addAudio(it, clip, layer.startMs) }
+            toast("Voz añadida a la pista de voz")
+        }
+    }
 
     fun moveLayerZ(id: String, toFront: Boolean) = edit { Timeline.moveLayerZ(it, id, toFront) }
 

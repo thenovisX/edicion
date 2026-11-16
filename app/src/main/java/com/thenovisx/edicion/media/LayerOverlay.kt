@@ -2,6 +2,9 @@ package com.thenovisx.edicion.media
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
+import android.graphics.Path
+import android.graphics.Shader
 import android.graphics.Canvas
 import android.graphics.ImageDecoder
 import android.graphics.Paint
@@ -15,6 +18,7 @@ import android.text.TextPaint
 import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.OverlaySettings
 import com.thenovisx.edicion.core.LayerMath
+import com.thenovisx.edicion.core.LayerShape
 import com.thenovisx.edicion.core.MEDIA_BASE_WIDTH
 import com.thenovisx.edicion.core.TEXT_BASE_HEIGHT
 import com.thenovisx.edicion.core.TextFont
@@ -88,6 +92,55 @@ object LayerRenderer {
         }
     }
 
+    /** Contorno de una forma de recorte dentro de un rectángulo de [w] x [h]. */
+    fun shapePath(shape: LayerShape, w: Float, h: Float): Path {
+        val path = Path()
+        val cx = w / 2f
+        val cy = h / 2f
+        fun polygon(points: Int, innerRatio: Float?, startDeg: Float) {
+            val n = if (innerRatio == null) points else points * 2
+            for (i in 0 until n) {
+                val r = if (innerRatio != null && i % 2 == 1) innerRatio else 1f
+                val a = Math.toRadians((startDeg + 360.0 * i / n))
+                val x = cx + (w / 2f) * r * Math.cos(a).toFloat()
+                val y = cy + (h / 2f) * r * Math.sin(a).toFloat()
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            path.close()
+        }
+        when (shape) {
+            LayerShape.NONE -> path.addRect(0f, 0f, w, h, Path.Direction.CW)
+            LayerShape.ROUNDED -> {
+                val r = minOf(w, h) * 0.14f
+                path.addRoundRect(RectF(0f, 0f, w, h), r, r, Path.Direction.CW)
+            }
+            LayerShape.CIRCLE -> path.addOval(RectF(0f, 0f, w, h), Path.Direction.CW)
+            LayerShape.DIAMOND -> polygon(4, null, -90f)
+            LayerShape.HEXAGON -> polygon(6, null, 0f)
+            LayerShape.STAR -> polygon(5, 0.45f, -90f)
+            LayerShape.HEART -> {
+                path.moveTo(cx, h * 0.95f)
+                path.cubicTo(-w * 0.25f, h * 0.55f, w * 0.1f, -h * 0.15f, cx, h * 0.25f)
+                path.cubicTo(w * 0.9f, -h * 0.15f, w * 1.25f, h * 0.55f, cx, h * 0.95f)
+                path.close()
+            }
+        }
+        return path
+    }
+
+    /** Aplica la forma de recorte y el volteo de una capa de imagen o vídeo. */
+    fun decorate(src: Bitmap, layer: TextLayer): Bitmap {
+        if (layer.shape == LayerShape.NONE && !layer.flipH) return src
+        val out = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        if (layer.flipH) canvas.scale(-1f, 1f, src.width / 2f, src.height / 2f)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = BitmapShader(src, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        }
+        canvas.drawPath(shapePath(layer.shape, src.width.toFloat(), src.height.toFloat()), paint)
+        return out
+    }
+
     fun typefaceFor(font: TextFont, bold: Boolean, italic: Boolean): Typeface {
         val family = when (font) {
             TextFont.SANS -> "sans-serif"
@@ -139,7 +192,7 @@ class LayerOverlay(
             return typedBitmap!!
         }
         return fullBitmap ?: runCatching {
-            if (layer.isImage) LayerRenderer.loadImage(context, layer.imageUri!!, LayerRenderer.mediaWidth(layer, outW))
+            if (layer.isImage) LayerRenderer.decorate(LayerRenderer.loadImage(context, layer.imageUri!!, LayerRenderer.mediaWidth(layer, outW)), layer)
             else LayerRenderer.renderText(layer, layer.text, outW, outH)
         }.getOrDefault(blank).also { fullBitmap = it }
     }
@@ -161,7 +214,7 @@ class LayerOverlay(
             val h = LayerRenderer.mediaHeight(layer, outW)
             r.getScaledFrameAtTime(index * FRAME_STEP_MS * 1000, MediaMetadataRetriever.OPTION_CLOSEST, w, h)
                 ?.let { if (it.config == Bitmap.Config.ARGB_8888) it else it.copy(Bitmap.Config.ARGB_8888, false) }
-        }.getOrNull() ?: return frame ?: blank
+        }.getOrNull()?.let { LayerRenderer.decorate(it, layer) } ?: return frame ?: blank
         frame = bmp
         frameIndex = index
         return bmp
@@ -171,9 +224,9 @@ class LayerOverlay(
         val st = LayerMath.stateAt(layer, presentationTimeUs / 1000)
         return OverlaySettings.Builder()
             // En el modelo la y positiva es hacia abajo; en NDC es hacia arriba.
-            .setBackgroundFrameAnchor((layer.x + st.dx).coerceIn(-1f, 1f), (-(layer.y + st.dy)).coerceIn(-1f, 1f))
+            .setBackgroundFrameAnchor(st.x.coerceIn(-1f, 1f), (-st.y).coerceIn(-1f, 1f))
             .setScale(st.scale, st.scale)
-            .setRotationDegrees(-layer.rotation)
+            .setRotationDegrees(-st.rotation)
             .setAlphaScale(st.alpha)
             .build()
     }

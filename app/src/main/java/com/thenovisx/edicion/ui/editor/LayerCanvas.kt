@@ -25,7 +25,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.GenericShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -42,6 +45,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import com.thenovisx.edicion.core.LayerAnim
 import com.thenovisx.edicion.core.LayerMath
+import com.thenovisx.edicion.core.LayerShape
 import com.thenovisx.edicion.core.Project
 import com.thenovisx.edicion.core.TextLayer
 import com.thenovisx.edicion.media.LayerRenderer
@@ -92,8 +96,9 @@ fun LayerCanvas(
                         val hit = currentProject.texts.lastOrNull { l ->
                             if (!l.isVisibleAt(currentPlayhead)) return@lastOrNull false
                             val s = sizes[l.id] ?: return@lastOrNull false
-                            val cx = cs.width / 2f + l.x * cs.width / 2f
-                            val cy = cs.height / 2f + l.y * cs.height / 2f
+                            val pose = LayerMath.poseAt(l, currentPlayhead)
+                            val cx = cs.width / 2f + pose.x * cs.width / 2f
+                            val cy = cs.height / 2f + pose.y * cs.height / 2f
                             val margin = 24.dp.toPx()
                             abs(pos.x - cx) <= s.width / 2f + margin && abs(pos.y - cy) <= s.height / 2f + margin
                         }
@@ -127,11 +132,11 @@ fun LayerCanvas(
                         Modifier
                             .align(Alignment.Center)
                             .graphicsLayer {
-                                translationX = (layer.x + st.dx) * w / 2f
-                                translationY = (layer.y + st.dy) * h / 2f
+                                translationX = st.x * w / 2f
+                                translationY = st.y * h / 2f
                                 scaleX = st.scale
                                 scaleY = st.scale
-                                rotationZ = layer.rotation
+                                rotationZ = st.rotation
                                 // La capa seleccionada nunca desaparece del todo, para poder cogerla.
                                 alpha = if (selected) st.alpha.coerceAtLeast(0.35f) else st.alpha
                             }
@@ -141,16 +146,27 @@ fun LayerCanvas(
                                 else Modifier
                             )
                     ) {
+                        // Forma de recorte y volteo de las capas de imagen y vídeo.
+                        val mediaMod = if (!layer.isMedia) Modifier else Modifier
+                            .then(
+                                if (layer.shape == LayerShape.NONE) Modifier
+                                else Modifier.clip(remember(layer.shape) {
+                                    GenericShape { size, _ ->
+                                        addPath(LayerRenderer.shapePath(layer.shape, size.width, size.height).asComposePath())
+                                    }
+                                })
+                            )
+                            .graphicsLayer { scaleX = if (layer.flipH) -1f else 1f }
                         when {
                             layer.isVideo -> {
                                 val wd = with(density) { LayerRenderer.mediaWidth(layer, w).toDp() }
                                 val hd = with(density) { LayerRenderer.mediaHeight(layer, w).toDp() }
-                                VideoLayerView(layer, playheadMs, isPlaying, Modifier.requiredSize(wd, hd))
+                                VideoLayerView(layer, playheadMs, isPlaying, Modifier.requiredSize(wd, hd).then(mediaMod))
                             }
                             layer.isImage -> {
                                 val wd = with(density) { LayerRenderer.mediaWidth(layer, w).toDp() }
                                 val hd = with(density) { LayerRenderer.mediaHeight(layer, w).toDp() }
-                                ImageLayerView(layer.imageUri!!, Modifier.requiredSize(wd, hd))
+                                ImageLayerView(layer.imageUri!!, Modifier.requiredSize(wd, hd).then(mediaMod))
                             }
                             else -> TextLayerView(layer, playheadMs, w, h)
                         }
@@ -168,7 +184,7 @@ private fun TextLayerView(layer: TextLayer, playheadMs: Long, canvasW: Int, canv
     // Solo se vuelve a dibujar cuando cambia algo que afecta al aspecto del texto.
     val styleKey = layer.copy(
         id = "", x = 0f, y = 0f, startMs = 0, endMs = 0, rotation = 0f, opacity = 1f,
-        animIn = LayerAnim.NONE, animOut = LayerAnim.NONE,
+        animIn = LayerAnim.NONE, animOut = LayerAnim.NONE, keyframes = emptyList(),
     )
     val bitmap = remember(styleKey, shown, canvasW, canvasH) {
         LayerRenderer.renderText(layer, shown, canvasW, canvasH)

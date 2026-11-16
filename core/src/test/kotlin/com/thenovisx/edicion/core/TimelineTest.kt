@@ -322,3 +322,79 @@ class ColorGradeTest {
         }
     }
 }
+
+class KeyframeTest {
+    private fun layer() = TextLayer(id = "l", text = "hola", startMs = 1000, endMs = 5000)
+    private fun project() = Project(
+        id = "p", name = "p",
+        clips = listOf(Clip(id = "c", uri = "u", kind = MediaKind.VIDEO, sourceDurationMs = 10_000)),
+        texts = listOf(layer()),
+    )
+
+    @Test
+    fun sinFotogramasClaveCambianLosValoresFijos() {
+        val p = Timeline.setLayerPose(project(), "l", 2000) { it.copy(x = 0.5f, scale = 2f) }
+        val l = p.texts.single()
+        assertEquals(0.5f, l.x)
+        assertEquals(2f, l.scale)
+        assertTrue(l.keyframes.isEmpty())
+    }
+
+    @Test
+    fun interpolaEntreFotogramasClave() {
+        var p = Timeline.toggleKeyframe(project(), "l", 1000)
+        p = Timeline.setLayerPose(p, "l", 3000) { it.copy(x = 1f) }
+        val l = p.texts.single()
+        assertEquals(2, l.keyframes.size)
+        assertEquals(0f, LayerMath.poseAt(l, 1000).x)
+        assertEquals(0.5f, LayerMath.poseAt(l, 2000).x, 0.001f)
+        assertEquals(1f, LayerMath.poseAt(l, 4500).x)
+        // Mover de nuevo en el mismo instante actualiza el fotograma en lugar de crear otro.
+        val again = Timeline.setLayerPose(p, "l", 3020) { it.copy(x = -1f) }.texts.single()
+        assertEquals(2, again.keyframes.size)
+        assertEquals(-1f, again.keyframes.last().x)
+    }
+
+    @Test
+    fun quitarElUltimoFotogramaDejaLaCapaFija() {
+        var p = Timeline.toggleKeyframe(project(), "l", 2000)
+        p = Timeline.setLayerPose(p, "l", 2000) { it.copy(y = 0.3f) }
+        p = Timeline.toggleKeyframe(p, "l", 2000)
+        val l = p.texts.single()
+        assertTrue(l.keyframes.isEmpty())
+        assertEquals(0.3f, l.y)
+    }
+
+    @Test
+    fun dividirReparteLosFotogramas() {
+        var p = Timeline.toggleKeyframe(project(), "l", 1000)
+        p = Timeline.setLayerPose(p, "l", 5000) { it.copy(x = 1f) }
+        p = Timeline.splitLayerAt(p, "l", 3000, "n")
+        val (a, b) = p.texts
+        assertEquals(3000, a.endMs)
+        assertEquals(3000, b.startMs)
+        assertEquals(LayerMath.poseAt(a, 2999).x, LayerMath.poseAt(b, 3000).x, 0.01f)
+        assertEquals(1f, LayerMath.poseAt(b, 5000).x)
+    }
+}
+
+class SubtitlesTest {
+    @Test
+    fun leeSrt() {
+        val srt = "1\n00:00:01,000 --> 00:00:02,500\nHola <i>mundo</i>\n\n2\n00:00:03,000 --> 00:00:04,000\nDos\nlíneas\n"
+        val cues = Subtitles.parseSrt(srt)
+        assertEquals(2, cues.size)
+        assertEquals(Cue(1000, 2500, "Hola mundo"), cues[0])
+        assertEquals("Dos\nlíneas", cues[1].text)
+        assertEquals(cues, Subtitles.parseSrt(Subtitles.toSrt(cues)))
+    }
+
+    @Test
+    fun reparteLineasSinPasarseDelFinal() {
+        val cues = Subtitles.fromLines("uno\n\nuna frase bastante más larga\ntres", 1000, 4000)
+        assertEquals(3, cues.size)
+        assertEquals(1000, cues.first().startMs)
+        assertTrue(cues.last().endMs <= 4000)
+        assertTrue(cues[1].endMs - cues[1].startMs > cues[0].endMs - cues[0].startMs)
+    }
+}
