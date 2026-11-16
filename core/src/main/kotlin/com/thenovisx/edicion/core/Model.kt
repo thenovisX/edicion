@@ -90,6 +90,32 @@ enum class TransitionType(val label: String) {
     NONE("Ninguna"),
     FADE_BLACK("Fundido a negro"),
     FADE_WHITE("Fundido a blanco"),
+    ZOOM_IN("Zoom acercar"),
+    ZOOM_OUT("Zoom alejar"),
+    SLIDE_LEFT("Empujar izquierda"),
+    SLIDE_RIGHT("Empujar derecha"),
+    SLIDE_UP("Empujar arriba"),
+    SLIDE_DOWN("Empujar abajo"),
+    SPIN("Giro"),
+    FLASH("Destello");
+
+    /** Color del fundido que acompaña a la transición. */
+    val white: Boolean get() = this == FADE_WHITE || this == FLASH
+}
+
+/** Efectos de movimiento que se aplican a un clip entero. */
+@Serializable
+enum class ClipEffect(val label: String) {
+    NONE("Ninguno"),
+    ZOOM_IN_SLOW("Acercar lento"),
+    ZOOM_OUT_SLOW("Alejar lento"),
+    PAN_LEFT("Paneo izquierda"),
+    PAN_RIGHT("Paneo derecha"),
+    SHAKE("Temblor"),
+    PULSE("Latido"),
+    SWAY("Balanceo"),
+    STROBE("Estrobo"),
+    GLITCH("Fallo"),
 }
 
 /** Tipos de letra disponibles (familias incluidas en Android). */
@@ -218,6 +244,10 @@ data class Clip(
     val panX: Float = 0f,
     val panY: Float = 0f,
     val hasAudio: Boolean = true,
+    val effect: ClipEffect = ClipEffect.NONE,
+    /** Fundido del sonido del clip al empezar y al acabar. */
+    val audioFadeInMs: Long = 0,
+    val audioFadeOutMs: Long = 0,
 ) {
     /** Duración del fragmento recortado, sin aplicar velocidad. */
     val trimmedDurationMs: Long get() = (trimEndMs - trimStartMs).coerceAtLeast(0)
@@ -244,6 +274,10 @@ data class AudioClip(
     val volume: Float = 1f,
     /** Pista de audio: [LANE_MUSIC] o [LANE_VOICE]. Los clips de una misma pista no se solapan. */
     val lane: Int = LANE_MUSIC,
+    val fadeInMs: Long = 0,
+    val fadeOutMs: Long = 0,
+    /** Tono de la voz o la música: 1 = original, menos = más grave, más = más agudo. */
+    val pitch: Float = 1f,
 ) {
     val durationMs: Long get() = (trimEndMs - trimStartMs).coerceAtLeast(0)
     val endMs: Long get() = startMs + durationMs
@@ -318,6 +352,8 @@ data class Project(
     val texts: List<TextLayer> = emptyList(),
     /** Ruta del último archivo exportado, si existe. */
     val lastExportUri: String? = null,
+    /** Marcadores de la línea de tiempo (ms), para señalar golpes de música o puntos de corte. */
+    val markers: List<Long> = emptyList(),
 ) {
     /** Duración total del vídeo (determinada por la pista principal). */
     val durationMs: Long get() = clips.sumOf { it.durationMs }
@@ -340,3 +376,4 @@ const val TEXT_BASE_HEIGHT = 0.045f
 const val MEDIA_BASE_WIDTH = 0.4f
 /** Margen para considerar que el cabezal está sobre un fotograma clave. */
 const val KEYFRAME_SNAP_MS = 60L
+const val MAX_AUDIO_FADE_MS = 5_000L

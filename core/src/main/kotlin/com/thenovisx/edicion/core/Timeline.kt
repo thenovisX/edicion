@@ -89,11 +89,11 @@ object Timeline {
         val sourceOffset = if (clip.kind == MediaKind.IMAGE) pos.offsetMs
         else (pos.offsetMs * clip.speed.toDouble()).toLong()
         val cut = clip.trimStartMs + sourceOffset
-        val first = clip.copy(trimEndMs = cut)
+        val first = clip.copy(trimEndMs = cut, audioFadeOutMs = 0)
         val second = if (clip.kind == MediaKind.IMAGE) {
-            clip.copy(id = newId, trimStartMs = 0, trimEndMs = clip.trimEndMs - cut)
+            clip.copy(id = newId, trimStartMs = 0, trimEndMs = clip.trimEndMs - cut, audioFadeInMs = 0)
         } else {
-            clip.copy(id = newId, trimStartMs = cut)
+            clip.copy(id = newId, trimStartMs = cut, audioFadeInMs = 0)
         }
         val list = project.clips.toMutableList()
         list[pos.index] = first
@@ -125,6 +125,8 @@ object Timeline {
             zoom = c.zoom.coerceIn(0.2f, 5f),
             panX = c.panX.coerceIn(-1f, 1f),
             panY = c.panY.coerceIn(-1f, 1f),
+            audioFadeInMs = c.audioFadeInMs.coerceIn(0, MAX_AUDIO_FADE_MS),
+            audioFadeOutMs = c.audioFadeOutMs.coerceIn(0, MAX_AUDIO_FADE_MS),
         )
     }
 
@@ -142,7 +144,11 @@ object Timeline {
                 val a = transform(it)
                 val start = a.trimStartMs.coerceIn(0, (a.sourceDurationMs - MIN_CLIP_DURATION_MS).coerceAtLeast(0))
                 val end = a.trimEndMs.coerceIn(start + MIN_CLIP_DURATION_MS, a.sourceDurationMs.coerceAtLeast(start + MIN_CLIP_DURATION_MS))
-                a.copy(trimStartMs = start, trimEndMs = end, startMs = a.startMs.coerceAtLeast(0), volume = a.volume.coerceIn(0f, 2f))
+                a.copy(
+                    trimStartMs = start, trimEndMs = end, startMs = a.startMs.coerceAtLeast(0), volume = a.volume.coerceIn(0f, 2f),
+                    fadeInMs = a.fadeInMs.coerceIn(0, MAX_AUDIO_FADE_MS), fadeOutMs = a.fadeOutMs.coerceIn(0, MAX_AUDIO_FADE_MS),
+                    pitch = a.pitch.coerceIn(0.5f, 2f),
+                )
             }
         }
         return project.copy(audio = resolveAudioOverlaps(updated, id))
@@ -155,8 +161,8 @@ object Timeline {
         val a = project.audio.sortedBy { if (it.id == preferId) 0 else 1 }.firstOrNull { timeMs > it.startMs + MIN_CLIP_DURATION_MS && timeMs < it.endMs - MIN_CLIP_DURATION_MS }
             ?: return project to null
         val cut = a.trimStartMs + (timeMs - a.startMs)
-        val first = a.copy(trimEndMs = cut)
-        val second = a.copy(id = newId, trimStartMs = cut, startMs = timeMs)
+        val first = a.copy(trimEndMs = cut, fadeOutMs = 0)
+        val second = a.copy(id = newId, trimStartMs = cut, startMs = timeMs, fadeInMs = 0)
         val list = project.audio.flatMap { if (it.id == a.id) listOf(first, second) else listOf(it) }
         return project.copy(audio = list) to newId
     }
@@ -178,6 +184,39 @@ object Timeline {
             out
         }
 
+    // ---------- Marcadores y utilidades de clip ----------
+
+    /** Pone un marcador en [timeMs], o lo quita si ya había uno cerca. */
+    fun toggleMarker(project: Project, timeMs: Long, toleranceMs: Long = 150): Project {
+        val near = project.markers.firstOrNull { kotlin.math.abs(it - timeMs) <= toleranceMs }
+        return project.copy(markers = if (near != null) project.markers - near else (project.markers + timeMs).sorted())
+    }
+
+    /**
+     * Separa el sonido de un clip de vídeo: lo silencia y coloca su audio en la pista de música,
+     * en el mismo punto. Devuelve el proyecto y el id del audio nuevo (null si no se pudo).
+     */
+    fun extractAudio(project: Project, clipId: String, newId: String): Pair<Project, String?> {
+        val i = project.clips.indexOfFirst { it.id == clipId }
+        val c = project.clips.getOrNull(i) ?: return project to null
+        if (c.kind != MediaKind.VIDEO || !c.hasAudio || c.muted || c.speed != 1f) return project to null
+        val audio = AudioClip(
+            id = newId, uri = c.uri, name = c.name, sourceDurationMs = c.sourceDurationMs,
+            trimStartMs = c.trimStartMs, trimEndMs = c.trimEndMs, volume = c.volume,
+            fadeInMs = c.audioFadeInMs, fadeOutMs = c.audioFadeOutMs,
+        )
+        val muted = updateClip(project, clipId) { it.copy(muted = true) }
+        return addAudio(muted, audio, clipStarts(project)[i]) to newId
+    }
+
+    /** Posición en el archivo original que se ve en [timeMs], si hay un clip de vídeo ahí. */
+    fun sourcePositionAt(project: Project, timeMs: Long): Pair<Clip, Long>? {
+        val pos = clipAt(project, timeMs) ?: return null
+        val c = project.clips[pos.index]
+        if (c.kind != MediaKind.VIDEO) return null
+        return c to (c.trimStartMs + ((timeMs - clipStarts(project)[pos.index]) * c.speed).toLong()).coerceIn(c.trimStartMs, c.trimEndMs)
+    }
+
     // ---------- Transiciones ----------
 
     /** Fundido activo en un instante: color (negro o blanco) y cantidad 0..1. */
@@ -190,7 +229,7 @@ object Timeline {
      */
     fun fadeAt(project: Project, timeMs: Long): Fade? = fadeAt(transitionCuts(project), timeMs)
 
-    data class Cut(val timeMs: Long, val beforeMs: Long, val afterMs: Long, val white: Boolean)
+    data class Cut(val timeMs: Long, val beforeMs: Long, val afterMs: Long, val white: Boolean, val type: TransitionType = TransitionType.FADE_BLACK)
 
     fun transitionCuts(project: Project): List<Cut> {
         val cuts = ArrayList<Cut>()
@@ -202,20 +241,94 @@ object Timeline {
                 // Ningún fundido ocupa más de la mitad de un clip.
                 val before = if (prev == null) 0L else minOf(half, prev.durationMs / 2)
                 val after = minOf(if (prev == null) c.transitionMs else half, c.durationMs / 2)
-                cuts += Cut(t, before, after, c.transition == TransitionType.FADE_WHITE)
+                cuts += Cut(t, before, after, c.transition.white, c.transition)
             }
             t += c.durationMs
         }
         return cuts
     }
 
-    fun fadeAt(cuts: List<Cut>, timeMs: Long): Fade? {
+    /**
+     * Estado de una transición en un instante: [amount] va de 0 (lejos del corte) a 1 (en el
+     * corte) e [incoming] indica si ya se ve el clip que entra.
+     */
+    data class TransitionState(val type: TransitionType, val amount: Float, val incoming: Boolean)
+
+    fun transitionAt(cuts: List<Cut>, timeMs: Long): TransitionState? {
         for (cut in cuts) {
             val d = timeMs - cut.timeMs
-            if (d < 0 && -d < cut.beforeMs) return Fade(cut.white, 1f - (-d).toFloat() / cut.beforeMs)
-            if (d >= 0 && d < cut.afterMs) return Fade(cut.white, 1f - d.toFloat() / cut.afterMs)
+            if (d < 0 && -d < cut.beforeMs) return TransitionState(cut.type, 1f - (-d).toFloat() / cut.beforeMs, false)
+            if (d >= 0 && d < cut.afterMs) return TransitionState(cut.type, 1f - d.toFloat() / cut.afterMs, true)
         }
         return null
+    }
+
+    fun fadeAt(cuts: List<Cut>, timeMs: Long): Fade? {
+        val st = transitionAt(cuts, timeMs) ?: return null
+        val amount = when (st.type) {
+            TransitionType.FADE_BLACK, TransitionType.FADE_WHITE -> st.amount
+            // El destello es un fundido a blanco muy rápido cerca del corte.
+            TransitionType.FLASH -> st.amount * st.amount
+            // Las transiciones de movimiento se oscurecen un poco para suavizar el corte.
+            TransitionType.ZOOM_IN, TransitionType.ZOOM_OUT, TransitionType.SPIN -> st.amount * st.amount * 0.85f
+            else -> 0f
+        }
+        return if (amount <= 0f) null else Fade(st.type.white, amount)
+    }
+
+    /** Movimiento del fotograma completo: escala, desplazamiento (-2..2 = un lienzo entero) y giro. */
+    data class Motion(val scale: Float = 1f, val dx: Float = 0f, val dy: Float = 0f, val rotation: Float = 0f) {
+        val isIdentity: Boolean get() = scale == 1f && dx == 0f && dy == 0f && rotation == 0f
+    }
+
+    /** Movimiento de la transición activa en [timeMs], o null si no hay ninguno. */
+    fun transitionMotion(cuts: List<Cut>, timeMs: Long): Motion? {
+        val st = transitionAt(cuts, timeMs) ?: return null
+        val e = st.amount * st.amount
+        // El clip que sale se va en un sentido y el que entra llega desde el contrario.
+        val side = if (st.incoming) -1f else 1f
+        return when (st.type) {
+            TransitionType.ZOOM_IN -> Motion(scale = if (st.incoming) 1f - 0.4f * e else 1f + 0.8f * e)
+            TransitionType.ZOOM_OUT -> Motion(scale = if (st.incoming) 1f + 0.8f * e else 1f - 0.4f * e)
+            TransitionType.SLIDE_LEFT -> Motion(dx = -2f * e * side)
+            TransitionType.SLIDE_RIGHT -> Motion(dx = 2f * e * side)
+            TransitionType.SLIDE_UP -> Motion(dy = -2f * e * side)
+            TransitionType.SLIDE_DOWN -> Motion(dy = 2f * e * side)
+            TransitionType.SPIN -> Motion(scale = 1f + 0.5f * e, rotation = 120f * e * side)
+            else -> null
+        }
+    }
+
+    /**
+     * Movimiento y destello de un efecto de clip. [tMs] es el tiempo dentro del clip y
+     * [durationMs] su duración. El segundo valor es la luz añadida (0..1).
+     */
+    fun clipEffectAt(effect: ClipEffect, tMs: Long, durationMs: Long): Pair<Motion, Float> {
+        val p = if (durationMs <= 0) 0f else (tMs.toFloat() / durationMs).coerceIn(0f, 1f)
+        val t = tMs / 1000.0
+        fun sin(hz: Double, phase: Double = 0.0) = kotlin.math.sin(2 * Math.PI * hz * t + phase).toFloat()
+        return when (effect) {
+            ClipEffect.NONE -> Motion() to 0f
+            ClipEffect.ZOOM_IN_SLOW -> Motion(scale = 1f + 0.25f * p) to 0f
+            ClipEffect.ZOOM_OUT_SLOW -> Motion(scale = 1.25f - 0.25f * p) to 0f
+            ClipEffect.PAN_LEFT -> Motion(scale = 1.2f, dx = 0.2f - 0.4f * p) to 0f
+            ClipEffect.PAN_RIGHT -> Motion(scale = 1.2f, dx = -0.2f + 0.4f * p) to 0f
+            ClipEffect.SHAKE -> Motion(scale = 1.08f, dx = 0.035f * sin(7.0) + 0.02f * sin(13.0, 1.0), dy = 0.035f * sin(9.0, 2.0) + 0.02f * sin(15.0, 0.5)) to 0f
+            ClipEffect.PULSE -> {
+                // Un golpe de zoom dos veces por segundo que se relaja enseguida.
+                val beat = (t * 2) % 1.0
+                Motion(scale = 1f + 0.08f * kotlin.math.exp(-6.0 * beat).toFloat()) to 0f
+            }
+            ClipEffect.SWAY -> Motion(scale = 1.12f, rotation = 3f * sin(0.5)) to 0f
+            ClipEffect.STROBE -> Motion() to (if ((tMs / 80) % 4 == 0L) 0.55f else 0f)
+            ClipEffect.GLITCH -> {
+                // Saltos bruscos e irregulares, repetibles para que la exportación coincida con la vista previa.
+                val step = tMs / 90
+                val h = ((step * 2654435761L) ushr 8) % 1000 / 1000f
+                if (h > 0.25f) Motion(scale = 1.06f) to 0f
+                else Motion(scale = 1.06f, dx = (h - 0.125f) * 0.6f, dy = (0.125f - h) * 0.2f) to (if (h < 0.08f) 0.25f else 0f)
+            }
+        }
     }
 
     // ---------- Texto ----------

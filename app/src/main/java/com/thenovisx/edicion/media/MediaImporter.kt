@@ -67,6 +67,43 @@ class MediaImporter(private val context: Context) {
         )
     }
 
+    /**
+     * Guarda como foto el fotograma de [clip] en [sourceMs] y devuelve un clip de imagen con el
+     * mismo aspecto (filtro, ajustes, encuadre) para insertarlo como imagen congelada.
+     */
+    suspend fun freezeFrame(clip: Clip, sourceMs: Long): Clip? = withContext(Dispatchers.IO) {
+        runCatching {
+            val retriever = android.media.MediaMetadataRetriever()
+            val frame = try {
+                retriever.setDataSource(context, Uri.parse(clip.uri))
+                retriever.getFrameAtTime(sourceMs * 1000, android.media.MediaMetadataRetriever.OPTION_CLOSEST)
+            } finally {
+                runCatching { retriever.release() }
+            } ?: return@runCatching null
+            val dir = java.io.File(context.filesDir, "congelados").apply { mkdirs() }
+            val file = java.io.File(dir, "fotograma_${System.currentTimeMillis()}.jpg")
+            file.outputStream().use { frame.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it) }
+            clip.copy(
+                id = newId(),
+                uri = Uri.fromFile(file).toString(),
+                kind = MediaKind.IMAGE,
+                mimeType = "image/jpeg",
+                name = "Fotograma",
+                sourceDurationMs = MAX_IMAGE_DURATION_MS,
+                trimStartMs = 0,
+                trimEndMs = 2_000,
+                speed = 1f,
+                width = frame.width,
+                height = frame.height,
+                transition = com.thenovisx.edicion.core.TransitionType.NONE,
+                effect = com.thenovisx.edicion.core.ClipEffect.NONE,
+                audioFadeInMs = 0,
+                audioFadeOutMs = 0,
+                hasAudio = false,
+            )
+        }.getOrNull()
+    }
+
     /** Convierte una grabación de voz en un clip de la pista de voz. */
     suspend fun importVoice(file: java.io.File, name: String): AudioClip? = withContext(Dispatchers.IO) {
         val uri = Uri.fromFile(file)

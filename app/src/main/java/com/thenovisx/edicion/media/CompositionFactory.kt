@@ -10,6 +10,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.ChannelMixingAudioProcessor
 import androidx.media3.common.audio.ChannelMixingMatrix
+import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.common.audio.SpeedProvider
 import androidx.media3.effect.MatrixTransformation
 import androidx.media3.effect.OverlayEffect
@@ -25,6 +26,7 @@ import androidx.media3.transformer.Effects
 import com.google.common.collect.ImmutableList
 import com.thenovisx.edicion.core.AudioClip
 import com.thenovisx.edicion.core.Clip
+import com.thenovisx.edicion.core.ClipEffect
 import com.thenovisx.edicion.core.ColorPipeline
 import com.thenovisx.edicion.core.LANE_LAYER_BASE
 import com.thenovisx.edicion.core.MediaKind
@@ -47,6 +49,7 @@ class CompositionFactory(private val context: Context) {
         val (w, h) = project.aspectRatio.outputSize(shortSide)
 
         val videoItems = project.clips.map { videoItem(it, w, h) }
+        val aspect = w.toFloat() / h
         val sequences = mutableListOf(EditedMediaItemSequence(videoItems))
 
         // En la vista previa las capas las dibuja la propia interfaz (así se pueden mover con el
@@ -70,7 +73,9 @@ class CompositionFactory(private val context: Context) {
             audioSequence(lane, project.durationMs)?.let { sequences += it }
         }
 
-        val compositionEffects = layerEffects(layers, w, h) + transitionEffects(project)
+        val cuts = Timeline.transitionCuts(project)
+        // El movimiento de las transiciones va antes que las capas para que los textos no se muevan con él.
+        val compositionEffects = transitionMotion(cuts, aspect) + layerEffects(layers, w, h) + transitionFades(cuts)
 
         return Composition.Builder(sequences)
             .setEffects(Effects(emptyList(), compositionEffects))
@@ -141,6 +146,18 @@ class CompositionFactory(private val context: Context) {
             }
             video += MatrixTransformation { matrix }
         }
+        if (clip.effect != ClipEffect.NONE) {
+            val effect = clip.effect
+            val durationMs = clip.durationMs
+            val aspect = outW.toFloat() / outH
+            video += MatrixTransformation { tUs -> motionMatrix(Timeline.clipEffectAt(effect, tUs / 1000, durationMs).first, aspect) }
+            if (effect == ClipEffect.STROBE || effect == ClipEffect.GLITCH) {
+                video += RgbMatrix { tUs, _ ->
+                    val add = Timeline.clipEffectAt(effect, tUs / 1000, durationMs).second
+                    floatArrayOf(1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f, add, add, add, 1f)
+                }
+            }
+        }
         val fx = buildList {
             if (clip.adjustments.vignette > 0f) add(ImageFx.vignette(clip.adjustments.vignette, outW, outH))
             if (clip.adjustments.grain > 0f) add(ImageFx.grain(clip.adjustments.grain, outW, outH))
@@ -149,6 +166,9 @@ class CompositionFactory(private val context: Context) {
 
         if (clip.kind == MediaKind.VIDEO && clip.effectiveVolume != 1f) {
             audio += volumeProcessor(clip.effectiveVolume)
+        }
+        if (clip.kind == MediaKind.VIDEO && (clip.audioFadeInMs > 0 || clip.audioFadeOutMs > 0)) {
+            audio += FadeAudioProcessor(clip.audioFadeInMs * 1000, clip.audioFadeOutMs * 1000, clip.durationMs * 1000)
         }
 
         return editedBuilder.setEffects(Effects(audio, video)).build()
@@ -185,7 +205,14 @@ class CompositionFactory(private val context: Context) {
                     .build()
             )
             .build()
-        val audio = if (a.volume != 1f) listOf<AudioProcessor>(volumeProcessor(a.volume)) else emptyList()
+        val audio = buildList<AudioProcessor> {
+            if (a.pitch != 1f) add(SonicAudioProcessor().apply { setPitch(a.pitch) })
+            if (a.volume != 1f) add(volumeProcessor(a.volume))
+            if (a.fadeInMs > 0 || a.fadeOutMs > 0) {
+                // Si el audio se corta al final del proyecto, el fundido de salida acaba ahí.
+                add(FadeAudioProcessor(a.fadeInMs * 1000, a.fadeOutMs * 1000, durationMs * 1000))
+            }
+        }
         return EditedMediaItem.Builder(item)
             .setRemoveVideo(true)
             .setDurationUs(a.sourceDurationMs * 1000)
@@ -227,9 +254,30 @@ class CompositionFactory(private val context: Context) {
         return listOf(OverlayEffect(ImmutableList.copyOf(overlays)))
     }
 
+    /** Matriz (en coordenadas normalizadas) de un movimiento de fotograma completo. */
+    private fun motionMatrix(m: Timeline.Motion, aspect: Float): Matrix = Matrix().apply {
+        if (m.scale != 1f) postScale(m.scale, m.scale)
+        if (m.rotation != 0f) {
+            // El giro se hace en proporciones reales para no deformar la imagen.
+            postScale(aspect, 1f)
+            postRotate(m.rotation)
+            postScale(1f / aspect, 1f)
+        }
+        // +y es hacia arriba en coordenadas normalizadas y hacia abajo en el modelo.
+        postTranslate(m.dx, -m.dy)
+    }
+
+    /** Movimiento (zoom, empuje, giro) alrededor de los cortes que tienen transición. */
+    private fun transitionMotion(cuts: List<Timeline.Cut>, aspect: Float): List<Effect> {
+        if (cuts.none { Timeline.transitionMotion(listOf(it), it.timeMs) != null }) return emptyList()
+        val identity = Matrix()
+        return listOf(MatrixTransformation { tUs ->
+            Timeline.transitionMotion(cuts, tUs / 1000)?.let { motionMatrix(it, aspect) } ?: identity
+        })
+    }
+
     /** Fundidos a negro o blanco alrededor de los cortes que tienen transición. */
-    private fun transitionEffects(project: Project): List<Effect> {
-        val cuts = Timeline.transitionCuts(project)
+    private fun transitionFades(cuts: List<Timeline.Cut>): List<Effect> {
         if (cuts.isEmpty()) return emptyList()
         val identity = floatArrayOf(1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f)
         return listOf(RgbMatrix { presentationTimeUs, _ ->

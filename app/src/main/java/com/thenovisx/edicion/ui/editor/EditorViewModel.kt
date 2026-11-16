@@ -188,7 +188,7 @@ class EditorViewModel(app: Application, savedState: SavedStateHandle) : AndroidV
     }
 
     /** Parte del proyecto que afecta al reproductor de vista previa (las capas no: van aparte). */
-    private fun previewKey(p: Project) = p.copy(name = "", updatedAt = 0, lastExportUri = null, texts = emptyList())
+    private fun previewKey(p: Project) = p.copy(name = "", updatedAt = 0, lastExportUri = null, texts = emptyList(), markers = emptyList())
 
     private var loadedPreviewKey: Project? = null
 
@@ -311,6 +311,44 @@ class EditorViewModel(app: Application, savedState: SavedStateHandle) : AndroidV
             else -> Unit
         }
     }
+
+    /** Inserta en el cabezal una imagen fija del fotograma que se está viendo. */
+    fun freezeFrame() {
+        val p = currentProject() ?: return
+        val t = _state.value.playheadMs
+        val found = Timeline.sourcePositionAt(p, t)
+        if (found == null) {
+            toast("Coloca el cabezal sobre un vídeo")
+            return
+        }
+        viewModelScope.launch {
+            _state.value = _state.value.copy(importing = true)
+            val still = importer.freezeFrame(found.first, found.second)
+            _state.value = _state.value.copy(importing = false)
+            if (still == null) {
+                toast("No se pudo capturar el fotograma")
+                return@launch
+            }
+            edit { proj ->
+                val (split, newId) = Timeline.splitAt(proj, t, MediaImporter.newId())
+                val idx = if (newId != null) split.clips.indexOfFirst { it.id == newId }
+                else (Timeline.clipAt(split, t)?.let { pos -> if (pos.offsetMs <= 0) pos.index else pos.index + 1 } ?: split.clips.size)
+                Timeline.addClips(split, listOf(still), idx)
+            }
+            select(Selection.VideoClip(still.id))
+        }
+    }
+
+    /** Pasa el sonido del clip seleccionado a la pista de música para editarlo por separado. */
+    fun extractAudio() {
+        val s = _state.value.selection as? Selection.VideoClip ?: return
+        var newId: String? = null
+        edit { p -> Timeline.extractAudio(p, s.id, MediaImporter.newId()).also { newId = it.second }.first }
+        if (newId == null) toast("Este clip no tiene sonido que extraer (o tiene la velocidad cambiada)")
+        else toast("Sonido movido a la pista de música")
+    }
+
+    fun toggleMarker() = edit { Timeline.toggleMarker(it, _state.value.playheadMs) }
 
     fun moveSelectedClip(delta: Int) {
         val s = _state.value.selection as? Selection.VideoClip ?: return

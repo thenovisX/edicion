@@ -32,6 +32,10 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.CropFree
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.AcUnit
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Diamond
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.RecordVoiceOver
@@ -78,6 +82,8 @@ import com.thenovisx.edicion.core.TransitionType
 import com.thenovisx.edicion.core.MAX_IMAGE_DURATION_MS
 import com.thenovisx.edicion.core.MIN_CLIP_DURATION_MS
 import com.thenovisx.edicion.core.MediaKind
+import com.thenovisx.edicion.core.ClipEffect
+import com.thenovisx.edicion.core.MAX_AUDIO_FADE_MS
 import com.thenovisx.edicion.core.TextLayer
 import com.thenovisx.edicion.core.LayerShape
 import com.thenovisx.edicion.core.LayerMath
@@ -109,16 +115,18 @@ enum class Panel(val title: String) {
     IMAGE_STYLE("Tamaño"),
     LAYER_VOLUME("Volumen"),
     FRAMING("Encuadre"),
+    EFFECT("Efecto"),
+    AUDIO_FADE("Fundidos y tono"),
 }
 
 fun panelsFor(selection: Selection, project: Project?): Set<Panel> = when (selection) {
     Selection.None -> setOf(Panel.FORMAT)
     is Selection.VideoClip -> {
         val clip = project?.clips?.firstOrNull { it.id == selection.id }
-        if (clip?.kind == MediaKind.IMAGE) setOf(Panel.IMAGE_DURATION, Panel.FILTERS, Panel.ADJUST, Panel.TRANSITION, Panel.FRAMING)
-        else setOf(Panel.TRIM, Panel.SPEED, Panel.VOLUME, Panel.FILTERS, Panel.ADJUST, Panel.TRANSITION, Panel.FRAMING)
+        if (clip?.kind == MediaKind.IMAGE) setOf(Panel.IMAGE_DURATION, Panel.FILTERS, Panel.ADJUST, Panel.TRANSITION, Panel.FRAMING, Panel.EFFECT)
+        else setOf(Panel.TRIM, Panel.SPEED, Panel.VOLUME, Panel.FILTERS, Panel.ADJUST, Panel.TRANSITION, Panel.FRAMING, Panel.EFFECT)
     }
-    is Selection.Audio -> setOf(Panel.AUDIO_TRIM, Panel.AUDIO_VOLUME)
+    is Selection.Audio -> setOf(Panel.AUDIO_TRIM, Panel.AUDIO_VOLUME, Panel.AUDIO_FADE)
     is Selection.Text -> setOf(
         Panel.TEXT_STYLE, Panel.IMAGE_STYLE, Panel.LAYER_VOLUME, Panel.TEXT_POSITION, Panel.TEXT_TIME, Panel.LAYER_ANIM,
     )
@@ -185,6 +193,8 @@ fun ToolArea(
                         Tool("Música", Icons.Default.LibraryMusic, Palette.Teal, onClick = onAddAudio)
                         Tool("Voz", Icons.Default.Mic, Palette.Green, onClick = onVoice)
                         Tool("Dividir", Icons.Default.ContentCut, Palette.Blue, onClick = vm::splitAtPlayhead)
+                        Tool("Marcador", Icons.Default.Flag, Palette.Amber, onClick = vm::toggleMarker)
+                        Tool("Congelar", Icons.Default.AcUnit, onClick = vm::freezeFrame)
                         Tool("Formato", Icons.Default.AspectRatio) { onPanel(Panel.FORMAT) }
                     }
                     is Selection.VideoClip -> {
@@ -201,6 +211,9 @@ fun ToolArea(
                         Tool("Ajustes", Icons.Default.Tune) { onPanel(Panel.ADJUST) }
                         Tool("Transición", Icons.Default.SwapHoriz) { onPanel(Panel.TRANSITION) }
                         Tool("Encuadre", Icons.Default.CropFree) { onPanel(Panel.FRAMING) }
+                        Tool("Efecto", Icons.Default.AutoAwesome, Palette.Amber) { onPanel(Panel.EFFECT) }
+                        Tool("Congelar", Icons.Default.AcUnit, onClick = vm::freezeFrame)
+                        Tool("Extraer audio", Icons.Default.GraphicEq, onClick = vm::extractAudio)
                         Tool("Girar", Icons.Default.RotateRight) { vm.updateClip(sel.id) { it.copy(rotation = it.rotation + 90) } }
                         Tool("Espejo", Icons.Default.Flip) { vm.updateClip(sel.id) { it.copy(flipHorizontal = !it.flipHorizontal) } }
                         Tool("Duplicar", Icons.Default.ContentCopy, onClick = vm::duplicateSelection)
@@ -212,6 +225,7 @@ fun ToolArea(
                         Tool("Dividir", Icons.Default.ContentCut, onClick = vm::splitAtPlayhead)
                         Tool("Recortar", Icons.Default.Straighten) { onPanel(Panel.AUDIO_TRIM) }
                         Tool("Volumen", Icons.Default.VolumeUp) { onPanel(Panel.AUDIO_VOLUME) }
+                        Tool("Fundidos", Icons.Default.GraphicEq) { onPanel(Panel.AUDIO_FADE) }
                         Tool("Borrar", Icons.Default.Delete, onClick = vm::deleteSelection)
                     }
                     is Selection.Text -> {
@@ -354,6 +368,22 @@ private fun PanelContent(panel: Panel, project: Project, selection: Selection, v
                     Text("Silenciar", Modifier.weight(1f))
                     Switch(checked = clip.muted, onCheckedChange = { m -> vm.updateClip(clip.id) { it.copy(muted = m) } })
                 }
+                LabeledSlider(
+                    label = "Fundido de entrada del sonido",
+                    valueText = "%.1f s".format(clip.audioFadeInMs / 1000f),
+                    value = clip.audioFadeInMs.toFloat(),
+                    range = 0f..MAX_AUDIO_FADE_MS.toFloat(),
+                    onChange = { v -> vm.updateClip(clip.id, live = true) { it.copy(audioFadeInMs = v.toLong()) } },
+                    onDone = vm::commitLive,
+                )
+                LabeledSlider(
+                    label = "Fundido de salida del sonido",
+                    valueText = "%.1f s".format(clip.audioFadeOutMs / 1000f),
+                    value = clip.audioFadeOutMs.toFloat(),
+                    range = 0f..MAX_AUDIO_FADE_MS.toFloat(),
+                    onChange = { v -> vm.updateClip(clip.id, live = true) { it.copy(audioFadeOutMs = v.toLong()) } },
+                    onDone = vm::commitLive,
+                )
             }
         }
 
@@ -442,6 +472,58 @@ private fun PanelContent(panel: Panel, project: Project, selection: Selection, v
                 onChange = { v -> vm.updateAudio(audio.id, live = true) { it.copy(volume = v) } },
                 onDone = vm::commitLive,
             )
+        }
+
+        Panel.EFFECT -> if (clip != null) {
+            Column {
+                Text("Movimiento aplicado a todo el clip", fontSize = 12.sp, color = Palette.OnSurfaceMuted)
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ClipEffect.entries.forEach { e ->
+                        FilterChip(
+                            selected = clip.effect == e,
+                            onClick = { vm.updateClip(clip.id) { it.copy(effect = e) } },
+                            label = { Text(e.label) },
+                        )
+                    }
+                }
+            }
+        }
+
+        Panel.AUDIO_FADE -> if (audio != null) {
+            Column {
+                LabeledSlider(
+                    label = "Fundido de entrada",
+                    valueText = "%.1f s".format(audio.fadeInMs / 1000f),
+                    value = audio.fadeInMs.toFloat(),
+                    range = 0f..MAX_AUDIO_FADE_MS.toFloat(),
+                    onChange = { v -> vm.updateAudio(audio.id, live = true) { it.copy(fadeInMs = v.toLong()) } },
+                    onDone = vm::commitLive,
+                )
+                LabeledSlider(
+                    label = "Fundido de salida",
+                    valueText = "%.1f s".format(audio.fadeOutMs / 1000f),
+                    value = audio.fadeOutMs.toFloat(),
+                    range = 0f..MAX_AUDIO_FADE_MS.toFloat(),
+                    onChange = { v -> vm.updateAudio(audio.id, live = true) { it.copy(fadeOutMs = v.toLong()) } },
+                    onDone = vm::commitLive,
+                )
+                Text("Tono (cambiador de voz)", fontSize = 12.sp)
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf("Muy grave" to 0.6f, "Grave" to 0.8f, "Normal" to 1f, "Agudo" to 1.25f, "Ardilla" to 1.7f).forEach { (label, p) ->
+                        FilterChip(
+                            selected = audio.pitch == p,
+                            onClick = { vm.updateAudio(audio.id) { it.copy(pitch = p) } },
+                            label = { Text(label) },
+                        )
+                    }
+                }
+            }
         }
 
         Panel.FRAMING -> if (clip != null) {

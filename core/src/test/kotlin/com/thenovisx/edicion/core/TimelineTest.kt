@@ -398,3 +398,61 @@ class SubtitlesTest {
         assertTrue(cues[1].endMs - cues[1].startMs > cues[0].endMs - cues[0].startMs)
     }
 }
+
+class Stage3Test {
+    private fun video(id: String, ms: Long) = Clip(id = id, uri = "u$id", kind = MediaKind.VIDEO, sourceDurationMs = ms)
+
+    @Test
+    fun transicionDeEmpujeMueveLosDosClips() {
+        val p = Project(id = "p", name = "p", clips = listOf(video("a", 10_000), video("b", 10_000).copy(transition = TransitionType.SLIDE_LEFT, transitionMs = 1_000)))
+        val cuts = Timeline.transitionCuts(p)
+        assertNull(Timeline.transitionMotion(cuts, 5_000))
+        val out = Timeline.transitionMotion(cuts, 9_990)!!
+        val inn = Timeline.transitionMotion(cuts, 10_000)!!
+        assertTrue(out.dx < -1.8f)
+        assertTrue(inn.dx > 1.8f)
+        assertNull(Timeline.fadeAt(cuts, 9_990))
+    }
+
+    @Test
+    fun efectosDeClipSonEstablesYAcotados() {
+        for (e in ClipEffect.entries) for (t in 0L..3000L step 37) {
+            val (m, light) = Timeline.clipEffectAt(e, t, 3000)
+            assertTrue(m.scale in 0.9f..1.4f)
+            assertTrue(kotlin.math.abs(m.dx) < 0.5f && kotlin.math.abs(m.dy) < 0.5f)
+            assertTrue(light in 0f..1f)
+            assertEquals(m, Timeline.clipEffectAt(e, t, 3000).first)
+        }
+        assertEquals(1f, Timeline.clipEffectAt(ClipEffect.ZOOM_IN_SLOW, 0, 3000).first.scale)
+        assertEquals(1.25f, Timeline.clipEffectAt(ClipEffect.ZOOM_IN_SLOW, 3000, 3000).first.scale)
+    }
+
+    @Test
+    fun extraerAudioSilenciaElClipYCreaLaPista() {
+        val p = Project(id = "p", name = "p", clips = listOf(video("a", 4_000), video("b", 6_000).copy(trimStartMs = 1_000)))
+        val (q, id) = Timeline.extractAudio(p, "b", "x")
+        assertEquals("x", id)
+        assertTrue(q.clips[1].muted)
+        val a = q.audio.single()
+        assertEquals(4_000, a.startMs)
+        assertEquals(1_000, a.trimStartMs)
+        assertEquals(5_000, a.durationMs)
+        assertNull(Timeline.extractAudio(q, "b", "y").second)
+    }
+
+    @Test
+    fun marcadoresSePonenYSeQuitan() {
+        var p = Project(id = "p", name = "p")
+        p = Timeline.toggleMarker(p, 2_000)
+        p = Timeline.toggleMarker(p, 1_000)
+        assertEquals(listOf(1_000L, 2_000L), p.markers)
+        p = Timeline.toggleMarker(p, 2_100)
+        assertEquals(listOf(1_000L), p.markers)
+    }
+
+    @Test
+    fun posicionEnElOriginalTieneEnCuentaRecorteYVelocidad() {
+        val p = Project(id = "p", name = "p", clips = listOf(video("a", 10_000).copy(trimStartMs = 2_000, speed = 2f)))
+        assertEquals(4_000L, Timeline.sourcePositionAt(p, 1_000)!!.second)
+    }
+}

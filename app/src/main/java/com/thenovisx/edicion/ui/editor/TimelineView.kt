@@ -42,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -153,7 +154,7 @@ fun TimelineView(
                 }
         ) {
             Column(Modifier.fillMaxWidth()) {
-                Ruler(playheadMs, pxPerSec, centerPx, Modifier.fillMaxWidth().height(RulerHeight))
+                Ruler(playheadMs, pxPerSec, centerPx, project.markers, Modifier.fillMaxWidth().height(RulerHeight))
 
                 // Pista de vídeo
                 Lane(VideoHeight) {
@@ -205,6 +206,7 @@ fun TimelineView(
                                     xPx = x,
                                     widthPx = w,
                                     selected = selection == Selection.Text(t.id),
+                                    marks = t.keyframes.map { it.tMs / 1000f * pxPerSec },
                                 )
                             }
                         }
@@ -299,7 +301,7 @@ private fun TransitionBadge(xPx: Float) {
 }
 
 @Composable
-private fun Ruler(playheadMs: Long, pxPerSec: Float, centerPx: Float, modifier: Modifier) {
+private fun Ruler(playheadMs: Long, pxPerSec: Float, centerPx: Float, markers: List<Long>, modifier: Modifier) {
     // Elige un intervalo de marcas legible según el zoom.
     val stepMs = listOf(100L, 250L, 500L, 1_000L, 2_000L, 5_000L, 10_000L, 30_000L, 60_000L)
         .firstOrNull { it / 1000f * pxPerSec >= 70f } ?: 120_000L
@@ -316,6 +318,14 @@ private fun Ruler(playheadMs: Long, pxPerSec: Float, centerPx: Float, modifier: 
                 val half = x + stepMs / 2000f * pxPerSec
                 drawLine(Palette.Outline, Offset(half, size.height * 0.75f), Offset(half, size.height), strokeWidth = 2f)
                 t += stepMs
+            }
+            // Marcadores: un banderín ámbar sobre la regla.
+            markers.forEach { m ->
+                val x = centerPx + (m - playheadMs) / 1000f * pxPerSec
+                if (x >= -10f && x <= size.width + 10f) {
+                    drawLine(Palette.Amber, Offset(x, 0f), Offset(x, size.height), strokeWidth = 3f)
+                    drawCircle(Palette.Amber, radius = size.height * 0.2f, center = Offset(x, size.height * 0.22f))
+                }
             }
         }
         var t = firstMs
@@ -387,6 +397,8 @@ private fun LaneItem(
     xPx: Float,
     widthPx: Float,
     selected: Boolean,
+    /** Posiciones (en píxeles desde el inicio) de los fotogramas clave. */
+    marks: List<Float> = emptyList(),
 ) {
     val density = LocalDensity.current
     val wDp = with(density) { (widthPx - 2f).coerceAtLeast(2f).toDp() }
@@ -399,6 +411,15 @@ private fun LaneItem(
             .clip(shape)
             .background(color)
             .then(if (selected) Modifier.border(3.dp, Color.White, shape) else Modifier)
+            .drawWithContent {
+                drawContent()
+                marks.forEach { m ->
+                    val r = size.height * 0.16f
+                    val c = Offset(m.coerceIn(r, (size.width - r).coerceAtLeast(r)), size.height - r * 1.4f)
+                    drawCircle(Color.Black, r * 1.3f, c)
+                    drawCircle(Color.White, r * 0.8f, c)
+                }
+            }
             .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
