@@ -15,7 +15,8 @@ App Android de edición multimedia (vídeo, foto y audio) pensada para el móvil
   - Girar y espejo.
   - Textos con 6 tipos de letra, color, fondo, contorno, sombra, opacidad, rotación y
     animaciones de entrada y salida (fundido, deslizar, zoom, máquina de escribir).
-  - Stickers (emojis) e imágenes superpuestas (logo, foto) con tamaño, opacidad y rotación.
+  - Capas ilimitadas de stickers, imágenes y vídeos superpuestos, con tamaño, opacidad,
+    rotación y orden. La capa seleccionada se mueve, escala y gira con los dedos en la vista previa.
   - Música con recorte, volumen y posición de inicio.
   - Voz en off grabada desde la app, en su propia pista.
   - Deshacer/rehacer, zoom con pellizco en la línea de tiempo.
@@ -46,4 +47,4 @@ Requisitos para compilar en local: JDK 17 y Android SDK 35.
 
 - Requiere Android 9 o superior.
 - Las transiciones son fundidos por color; la disolución cruzada entre clips está pendiente.
-- Aún no hay superposición de vídeos (PiP); sí de imágenes.
+- Exportar proyectos con capas de vídeo es más lento que sin ellas.

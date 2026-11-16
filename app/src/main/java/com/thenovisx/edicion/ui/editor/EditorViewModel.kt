@@ -177,7 +177,15 @@ class EditorViewModel(app: Application, savedState: SavedStateHandle) : AndroidV
         }
     }
 
+    /** Parte del proyecto que afecta al reproductor de vista previa (las capas no: van aparte). */
+    private fun previewKey(p: Project) = p.copy(name = "", updatedAt = 0, lastExportUri = null, texts = emptyList())
+
+    private var loadedPreviewKey: Project? = null
+
     private fun schedulePreview(p: Project) {
+        val key = previewKey(p)
+        if (key == loadedPreviewKey) return
+        loadedPreviewKey = key
         previewJob?.cancel()
         previewJob = viewModelScope.launch {
             delay(250)
@@ -328,18 +336,51 @@ class EditorViewModel(app: Application, savedState: SavedStateHandle) : AndroidV
         )
     }
 
-    fun addImageLayer(uri: Uri) {
+    /** Añade una imagen o un vídeo como capa superpuesta en el cabezal. */
+    fun addMediaLayer(uri: Uri) {
         viewModelScope.launch {
-            val name = importer.prepareImageLayer(uri)
-            if (name == null) {
-                toast("No se pudo leer la imagen")
+            _state.value = _state.value.copy(importing = true)
+            val media = importer.prepareLayerMedia(uri)
+            _state.value = _state.value.copy(importing = false)
+            if (media == null) {
+                toast("No se pudo leer el archivo")
                 return@launch
             }
-            addLayer { start, end ->
-                TextLayer(id = MediaImporter.newId(), text = name, startMs = start, endMs = end, imageUri = uri.toString())
+            addLayer { start, end -> mediaLayer(media, MediaImporter.newId(), start, end) }
+        }
+    }
+
+    /** Sustituye el contenido de una capa de imagen o vídeo conservando posición, tamaño y tiempos. */
+    fun replaceLayerMedia(id: String, uri: Uri) {
+        viewModelScope.launch {
+            val media = importer.prepareLayerMedia(uri)
+            if (media == null) {
+                toast("No se pudo leer el archivo")
+                return@launch
+            }
+            updateText(id) { old ->
+                mediaLayer(media, old.id, old.startMs, old.endMs).copy(
+                    x = old.x, y = old.y, scale = old.scale, opacity = old.opacity, rotation = old.rotation,
+                    animIn = old.animIn, animOut = old.animOut,
+                )
             }
         }
     }
+
+    private fun mediaLayer(m: MediaImporter.LayerMedia, id: String, start: Long, end: Long) = TextLayer(
+        id = id,
+        text = m.name,
+        startMs = start,
+        // Un vídeo ocupa por defecto toda su duración (se recorta al final del proyecto).
+        endMs = if (m.isVideo) start + m.durationMs else end,
+        imageUri = if (m.isVideo) null else m.uri,
+        videoUri = if (m.isVideo) m.uri else null,
+        sourceDurationMs = m.durationMs,
+        hasAudio = m.hasAudio,
+        aspect = m.aspect,
+    )
+
+    fun moveLayerZ(id: String, toFront: Boolean) = edit { Timeline.moveLayerZ(it, id, toFront) }
 
     private fun addLayer(create: (startMs: Long, endMs: Long) -> TextLayer) {
         val p = currentProject() ?: return

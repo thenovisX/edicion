@@ -23,6 +23,7 @@ import com.google.common.collect.ImmutableList
 import com.thenovisx.edicion.core.AudioClip
 import com.thenovisx.edicion.core.Clip
 import com.thenovisx.edicion.core.ColorMath
+import com.thenovisx.edicion.core.LANE_LAYER_BASE
 import com.thenovisx.edicion.core.MediaKind
 import com.thenovisx.edicion.core.Project
 import com.thenovisx.edicion.core.TextLayer
@@ -45,11 +46,28 @@ class CompositionFactory(private val context: Context) {
         val videoItems = project.clips.map { videoItem(it, w, h) }
         val sequences = mutableListOf(EditedMediaItemSequence(videoItems))
 
-        project.audio.groupBy { it.lane }.toSortedMap().values.forEach { lane ->
+        // En la vista previa las capas las dibuja la propia interfaz (así se pueden mover con el
+        // dedo al instante), de modo que solo se incluyen al exportar.
+        val layers = if (forPreview) emptyList() else project.texts
+        val layerAudio = layers.withIndex()
+            .filter { (_, l) -> l.isVideo && l.hasAudio && !l.muted && l.volume > 0f }
+            .map { (i, l) ->
+                AudioClip(
+                    id = l.id,
+                    uri = l.videoUri!!,
+                    sourceDurationMs = l.sourceDurationMs,
+                    trimStartMs = l.trimStartMs,
+                    trimEndMs = minOf(l.trimStartMs + l.durationMs, l.sourceDurationMs),
+                    startMs = l.startMs,
+                    volume = l.volume,
+                    lane = LANE_LAYER_BASE + i,
+                )
+            }
+        (project.audio + layerAudio).groupBy { it.lane }.toSortedMap().values.forEach { lane ->
             audioSequence(lane, project.durationMs)?.let { sequences += it }
         }
 
-        val compositionEffects = layerEffects(project.texts, w, h) + transitionEffects(project)
+        val compositionEffects = layerEffects(layers, w, h) + transitionEffects(project)
 
         return Composition.Builder(sequences)
             .setEffects(Effects(emptyList(), compositionEffects))

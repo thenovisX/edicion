@@ -79,11 +79,32 @@ class MediaImporter(private val context: Context) {
         )
     }
 
-    /** Prepara una imagen para usarla como capa superpuesta. Devuelve su nombre, o null si no es legible. */
-    suspend fun prepareImageLayer(uri: Uri): String? = withContext(Dispatchers.IO) {
+    /** Datos de un archivo que se va a usar como capa superpuesta. */
+    data class LayerMedia(
+        val uri: String,
+        val name: String,
+        val isVideo: Boolean,
+        val aspect: Float,
+        val durationMs: Long,
+        val hasAudio: Boolean,
+    )
+
+    /** Prepara una imagen o un vídeo para usarlo como capa. Devuelve null si no es legible. */
+    suspend fun prepareLayerMedia(uri: Uri): LayerMedia? = withContext(Dispatchers.IO) {
         persist(uri)
-        val (w, h) = imageSize(uri)
-        if (w <= 0 || h <= 0) null else displayName(uri).ifEmpty { "Imagen" }
+        val name = displayName(uri)
+        if (resolver.getType(uri)?.startsWith("image/") == true) {
+            val (w, h) = imageSize(uri)
+            if (w <= 0 || h <= 0) null
+            else LayerMedia(uri.toString(), name.ifEmpty { "Imagen" }, false, w.toFloat() / h, 0, false)
+        } else {
+            val info = probe(uri) ?: return@withContext null
+            if (info.width <= 0 || info.height <= 0) null
+            else LayerMedia(
+                uri.toString(), name.ifEmpty { "Vídeo" }, true,
+                info.width.toFloat() / info.height, info.durationMs, info.hasAudio,
+            )
+        }
     }
 
     /** Conserva el permiso de lectura para poder abrir el proyecto más tarde. */
@@ -93,7 +114,7 @@ class MediaImporter(private val context: Context) {
         }
     }
 
-    private data class Info(val durationMs: Long, val width: Int, val height: Int)
+    private data class Info(val durationMs: Long, val width: Int, val height: Int, val hasAudio: Boolean)
 
     private fun probe(uri: Uri): Info? {
         val r = MediaMetadataRetriever()
@@ -104,7 +125,8 @@ class MediaImporter(private val context: Context) {
             var h = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
             val rot = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
             if (rot == 90 || rot == 270) { val t = w; w = h; h = t }
-            if (d <= 0) null else Info(d, w, h)
+            val audio = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes"
+            if (d <= 0) null else Info(d, w, h, audio)
         } catch (e: Exception) {
             null
         } finally {

@@ -94,8 +94,14 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
     val pickAudio = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.importAudio(uri)
     }
-    val pickLayerImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) vm.addImageLayer(uri)
+    val pickLayerMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) vm.addMediaLayer(uri)
+    }
+    var replacingLayerId by remember { mutableStateOf<String?>(null) }
+    val pickReplacement = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        val id = replacingLayerId
+        replacingLayerId = null
+        if (uri != null && id != null) vm.replaceLayerMedia(id, uri)
     }
     var showStickers by remember { mutableStateOf(false) }
     val recording by vm.recording.collectAsState()
@@ -192,6 +198,24 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
                             onRelease = { it.player = null },
                             modifier = Modifier.fillMaxSize(),
                         )
+                        LayerCanvas(
+                            project = project,
+                            playheadMs = state.playheadMs,
+                            isPlaying = isPlaying,
+                            selection = state.selection,
+                            onSelect = { vm.select(it); panel = null },
+                            onTransform = { id, pan, zoom, rotation ->
+                                vm.updateText(id, live = true) {
+                                    it.copy(
+                                        x = (it.x + pan.x).coerceIn(-1f, 1f),
+                                        y = (it.y + pan.y).coerceIn(-1f, 1f),
+                                        scale = it.scale * zoom,
+                                        rotation = it.rotation + rotation,
+                                    )
+                                }
+                            },
+                            onTransformEnd = vm::commitLive,
+                        )
                     } else {
                         Text(
                             "Proyecto vacío",
@@ -259,7 +283,7 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
                 selection = state.selection,
                 onScrub = vm::scrubTo,
                 onSelect = { vm.select(it); panel = null },
-                modifier = Modifier.height(TimelineHeight),
+                modifier = Modifier.height(timelineHeight(project)),
             )
 
             ToolArea(
@@ -275,8 +299,12 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
                 onAddText = { textDialog = TextDialogMode.Add },
                 onEditText = { id -> textDialog = TextDialogMode.Edit(id) },
                 onAddSticker = { showStickers = true },
-                onAddImageLayer = {
-                    pickLayerImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                onAddMediaLayer = {
+                    pickLayerMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                },
+                onReplaceLayer = { id ->
+                    replacingLayerId = id
+                    pickReplacement.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
                 },
                 onVoice = {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {

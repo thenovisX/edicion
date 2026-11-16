@@ -106,13 +106,14 @@ fun TimelineView(
         val center by rememberUpdatedState(centerPx)
         fun xOf(ms: Long): Float = centerPx + (ms - playheadMs) / 1000f * pxPerSec
 
-        // Límite inferior de cada fila, para saber qué se ha tocado.
-        val rowsBottom = with(density) {
-            val r = RulerHeight.toPx()
-            val v = r + (VideoHeight + TrackGap).toPx()
-            val lane = (LaneHeight + TrackGap).toPx()
-            listOf(r, v, v + lane, v + lane * 2, v + lane * 3)
-        }
+        // Las capas se reparten en varias filas para que no se tapen entre sí.
+        val layerRows = remember(project.texts) { Timeline.layerRows(project.texts, MAX_LAYER_ROWS) }
+        val layerRowCount = layerRowCount(project)
+        val currentLayerRows by rememberUpdatedState(layerRows)
+        val currentRowCount by rememberUpdatedState(layerRowCount)
+        val rulerPx = with(density) { RulerHeight.toPx() }
+        val videoBottomPx = rulerPx + with(density) { (VideoHeight + TrackGap).toPx() }
+        val lanePx = with(density) { (LaneHeight + TrackGap).toPx() }
 
         Box(
             Modifier
@@ -129,19 +130,22 @@ fun TimelineView(
                         val tMs = currentPlayhead + ((pos.x - center) / pxPerSec * 1000f).toLong()
                         fun audioIn(lane: Int) = p.audio.firstOrNull { it.lane == lane && tMs in it.startMs until it.endMs }
                             ?.let { Selection.Audio(it.id) }
+                        // Fila tocada por debajo de la pista de vídeo: primero las de capas, luego música y voz.
+                        val lane = if (pos.y < videoBottomPx) -1 else ((pos.y - videoBottomPx) / lanePx).toInt()
+                        val rows = currentLayerRows
                         val sel: Selection = when {
-                            pos.y < rowsBottom[0] -> Selection.None
-                            pos.y < rowsBottom[1] -> Timeline.clipAt(p, tMs)
+                            pos.y < rulerPx -> Selection.None
+                            lane < 0 -> Timeline.clipAt(p, tMs)
                                 ?.takeIf { tMs in 0 until p.durationMs }
                                 ?.let { Selection.VideoClip(p.clips[it.index].id) }
-                            pos.y < rowsBottom[2] -> {
-                                // Si hay varias capas a la vez, cada toque pasa a la siguiente.
-                                val hits = p.texts.filter { it.isVisibleAt(tMs) }
+                            lane < currentRowCount -> {
+                                // Si varias capas coinciden en la fila, cada toque pasa a la siguiente.
+                                val hits = p.texts.filterIndexed { i, l -> rows.getOrNull(i) == lane && l.isVisibleAt(tMs) }
                                 val cur = hits.indexOfFirst { currentSelection == Selection.Text(it.id) }
                                 hits.getOrNull(if (cur < 0) hits.lastIndex else cur - 1)?.let { Selection.Text(it.id) }
                             }
-                            pos.y < rowsBottom[3] -> audioIn(LANE_MUSIC)
-                            pos.y < rowsBottom[4] -> audioIn(LANE_VOICE)
+                            lane == currentRowCount -> audioIn(LANE_MUSIC)
+                            lane == currentRowCount + 1 -> audioIn(LANE_VOICE)
                             else -> null
                         } ?: Selection.None
                         selectItem(if (sel == currentSelection) Selection.None else sel)
@@ -179,24 +183,34 @@ fun TimelineView(
                 }
                 Spacer(Modifier.height(TrackGap))
 
-                // Pista de capas
-                Lane(LaneHeight) {
-                    project.texts.forEach { t ->
-                        val x = xOf(t.startMs)
-                        val w = t.durationMs / 1000f * pxPerSec
-                        if (x + w >= 0 && x <= widthPx) {
-                            LaneItem(
-                                label = t.text,
-                                icon = if (t.isImage) Icons.Default.Image else Icons.Default.TextFields,
-                                color = if (t.isImage) Palette.Pink else Palette.Violet,
-                                xPx = x,
-                                widthPx = w,
-                                selected = selection == Selection.Text(t.id),
-                            )
+                // Filas de capas
+                repeat(layerRowCount) { row ->
+                    Lane(LaneHeight) {
+                        project.texts.forEachIndexed { i, t ->
+                            val x = xOf(t.startMs)
+                            val w = t.durationMs / 1000f * pxPerSec
+                            if (layerRows.getOrNull(i) == row && x + w >= 0 && x <= widthPx) {
+                                LaneItem(
+                                    label = t.text,
+                                    icon = when {
+                                        t.isVideo -> Icons.Default.Movie
+                                        t.isImage -> Icons.Default.Image
+                                        else -> Icons.Default.TextFields
+                                    },
+                                    color = when {
+                                        t.isVideo -> Palette.Blue
+                                        t.isImage -> Palette.Pink
+                                        else -> Palette.Violet
+                                    },
+                                    xPx = x,
+                                    widthPx = w,
+                                    selected = selection == Selection.Text(t.id),
+                                )
+                            }
                         }
                     }
+                    Spacer(Modifier.height(TrackGap))
                 }
-                Spacer(Modifier.height(TrackGap))
 
                 listOf(LANE_MUSIC to Palette.Teal, LANE_VOICE to Palette.Amber).forEach { (lane, color) ->
                     Lane(LaneHeight) {
@@ -223,8 +237,10 @@ fun TimelineView(
             Column(Modifier.padding(top = RulerHeight, start = 4.dp)) {
                 LaneLabel(Icons.Default.Movie, VideoHeight)
                 Spacer(Modifier.height(TrackGap))
-                LaneLabel(Icons.Default.Layers, LaneHeight)
-                Spacer(Modifier.height(TrackGap))
+                repeat(layerRowCount) {
+                    LaneLabel(Icons.Default.Layers, LaneHeight)
+                    Spacer(Modifier.height(TrackGap))
+                }
                 LaneLabel(Icons.Default.MusicNote, LaneHeight)
                 Spacer(Modifier.height(TrackGap))
                 LaneLabel(Icons.Default.Mic, LaneHeight)
@@ -398,5 +414,14 @@ private fun LaneItem(
     }
 }
 
-/** Altura total de la línea de tiempo. */
-val TimelineHeight: Dp = RulerHeight + VideoHeight + LaneHeight * 3 + TrackGap * 4 + 4.dp
+/** Como mucho se muestran estas filas de capas; si hay más capas simultáneas comparten la última. */
+private const val MAX_LAYER_ROWS = 4
+
+private fun layerRowCount(project: Project): Int =
+    (Timeline.layerRows(project.texts, MAX_LAYER_ROWS).maxOrNull() ?: 0) + 1
+
+/** Altura total de la línea de tiempo: crece con el número de filas de capas. */
+fun timelineHeight(project: Project): Dp {
+    val lanes = layerRowCount(project) + 2
+    return RulerHeight + VideoHeight + TrackGap + (LaneHeight + TrackGap) * lanes + 4.dp
+}

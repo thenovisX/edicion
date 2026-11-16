@@ -34,6 +34,9 @@ import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flip
+import androidx.compose.material.icons.filled.FlipToBack
+import androidx.compose.material.icons.filled.FlipToFront
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.LibraryMusic
@@ -92,7 +95,8 @@ enum class Panel(val title: String) {
     TEXT_TIME("Tiempo"),
     TRANSITION("Transición"),
     LAYER_ANIM("Animación"),
-    IMAGE_STYLE("Imagen"),
+    IMAGE_STYLE("Tamaño"),
+    LAYER_VOLUME("Volumen"),
 }
 
 fun panelsFor(selection: Selection, project: Project?): Set<Panel> = when (selection) {
@@ -103,7 +107,9 @@ fun panelsFor(selection: Selection, project: Project?): Set<Panel> = when (selec
         else setOf(Panel.TRIM, Panel.SPEED, Panel.VOLUME, Panel.FILTERS, Panel.ADJUST, Panel.TRANSITION)
     }
     is Selection.Audio -> setOf(Panel.AUDIO_TRIM, Panel.AUDIO_VOLUME)
-    is Selection.Text -> setOf(Panel.TEXT_STYLE, Panel.IMAGE_STYLE, Panel.TEXT_POSITION, Panel.TEXT_TIME, Panel.LAYER_ANIM)
+    is Selection.Text -> setOf(
+        Panel.TEXT_STYLE, Panel.IMAGE_STYLE, Panel.LAYER_VOLUME, Panel.TEXT_POSITION, Panel.TEXT_TIME, Panel.LAYER_ANIM,
+    )
 }
 
 @Composable
@@ -118,7 +124,8 @@ fun ToolArea(
     onAddText: () -> Unit,
     onEditText: (String) -> Unit,
     onAddSticker: () -> Unit,
-    onAddImageLayer: () -> Unit,
+    onAddMediaLayer: () -> Unit,
+    onReplaceLayer: (String) -> Unit,
     onVoice: () -> Unit,
 ) {
     Column(
@@ -160,7 +167,7 @@ fun ToolArea(
                         Tool("Medios", Icons.Default.AddPhotoAlternate, Palette.Coral, onClick = onAddMedia)
                         Tool("Texto", Icons.Default.TextFields, Palette.Violet, onClick = onAddText)
                         Tool("Sticker", Icons.Default.EmojiEmotions, Palette.Amber, onClick = onAddSticker)
-                        Tool("Imagen", Icons.Default.Image, Palette.Pink, onClick = onAddImageLayer)
+                        Tool("Capa", Icons.Default.Layers, Palette.Pink, onClick = onAddMediaLayer)
                         Tool("Música", Icons.Default.LibraryMusic, Palette.Teal, onClick = onAddAudio)
                         Tool("Voz", Icons.Default.Mic, Palette.Green, onClick = onVoice)
                         Tool("Dividir", Icons.Default.ContentCut, Palette.Blue, onClick = vm::splitAtPlayhead)
@@ -194,8 +201,12 @@ fun ToolArea(
                     }
                     is Selection.Text -> {
                         val layer = project.texts.firstOrNull { it.id == sel.id }
-                        if (layer?.isImage == true) {
+                        if (layer?.isMedia == true) {
                             Tool("Tamaño", Icons.Default.FormatSize) { onPanel(Panel.IMAGE_STYLE) }
+                            Tool("Cambiar", Icons.Default.Image) { onReplaceLayer(sel.id) }
+                            if (layer.isVideo && layer.hasAudio) {
+                                Tool("Volumen", Icons.Default.VolumeUp) { onPanel(Panel.LAYER_VOLUME) }
+                            }
                         } else {
                             Tool("Editar", Icons.Default.Edit) { onEditText(sel.id) }
                             Tool("Estilo", Icons.Default.FormatSize) { onPanel(Panel.TEXT_STYLE) }
@@ -203,6 +214,9 @@ fun ToolArea(
                         Tool("Posición", Icons.Default.OpenWith) { onPanel(Panel.TEXT_POSITION) }
                         Tool("Tiempo", Icons.Default.Timer) { onPanel(Panel.TEXT_TIME) }
                         Tool("Animación", Icons.Default.Animation) { onPanel(Panel.LAYER_ANIM) }
+                        Tool("Al frente", Icons.Default.FlipToFront) { vm.moveLayerZ(sel.id, toFront = true) }
+                        Tool("Al fondo", Icons.Default.FlipToBack) { vm.moveLayerZ(sel.id, toFront = false) }
+                        Tool("Capa", Icons.Default.Layers, Palette.Pink, onClick = onAddMediaLayer)
                         Tool("Dividir", Icons.Default.ContentCut, onClick = vm::splitAtPlayhead)
                         Tool("Duplicar", Icons.Default.ContentCopy, onClick = vm::duplicateSelection)
                         Tool("Borrar", Icons.Default.Delete, onClick = vm::deleteSelection)
@@ -464,13 +478,30 @@ private fun PanelContent(panel: Panel, project: Project, selection: Selection, v
             }
         }
 
+        Panel.LAYER_VOLUME -> if (text != null) {
+            Column {
+                LabeledSlider(
+                    label = "Volumen",
+                    valueText = "${(text.volume * 100).roundToInt()} %",
+                    value = text.volume,
+                    range = 0f..2f,
+                    onChange = { v -> vm.updateText(text.id, live = true) { it.copy(volume = v) } },
+                    onDone = vm::commitLive,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Silenciar", Modifier.weight(1f))
+                    Switch(checked = text.muted, onCheckedChange = { m -> vm.updateText(text.id) { it.copy(muted = m) } })
+                }
+            }
+        }
+
         Panel.IMAGE_STYLE -> if (text != null) {
             Column {
                 LabeledSlider(
                     label = "Tamaño",
                     valueText = "${(text.scale * 100).roundToInt()} %",
                     value = text.scale,
-                    range = 0.2f..3f,
+                    range = 0.1f..3f,
                     onChange = { v -> vm.updateText(text.id, live = true) { it.copy(scale = v) } },
                     onDone = vm::commitLive,
                 )
@@ -623,6 +654,16 @@ private fun PanelContent(panel: Panel, project: Project, selection: Selection, v
                     onValueChangeFinished = vm::commitLive,
                     valueRange = 0f..maxOf(project.durationMs.toFloat(), 1f),
                 )
+                if (text.isVideo) {
+                    LabeledSlider(
+                        label = "El vídeo empieza en",
+                        valueText = formatTime(text.trimStartMs),
+                        value = text.trimStartMs.toFloat(),
+                        range = 0f..maxOf((text.sourceDurationMs - MIN_CLIP_DURATION_MS).toFloat(), 1f),
+                        onChange = { v -> vm.updateText(text.id, live = true) { it.copy(trimStartMs = v.toLong()) } },
+                        onDone = vm::commitLive,
+                    )
+                }
             }
         }
     }

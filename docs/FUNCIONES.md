@@ -102,7 +102,9 @@ Lanzada en abril de 2025, gratuita, sin marca de agua, solo móvil.
 | Zoom de la línea de tiempo con pellizco | ✅ |
 | Arrastrar para moverse por el tiempo | ✅ |
 | Superposición de imagen (logo, foto) con tamaño, opacidad y rotación | ✅ |
-| Superposición de vídeo (PiP) y pistas ilimitadas | 🔜 Etapa 3 |
+| Superposición de vídeo (PiP) con su audio, recorte, tamaño, opacidad y rotación | ✅ |
+| Capas ilimitadas, repartidas en filas, con orden al frente/al fondo | ✅ |
+| Modos de fusión y máscaras en capas | 🔜 Etapa 3 |
 | Transiciones: fundido a negro y a blanco con duración | ✅ |
 | Transiciones: disolución cruzada, deslizar, zoom, desenfoque | 🔜 Etapa 3 |
 | Congelar fotograma, invertir clip | 🔜 Etapa 3 |
@@ -136,7 +138,7 @@ Lanzada en abril de 2025, gratuita, sin marca de agua, solo móvil.
 | 6 tipos de letra, cursiva, contorno, sombra, opacidad y rotación | ✅ |
 | Animaciones de entrada/salida: fundido, deslizar, zoom, máquina de escribir | ✅ |
 | Stickers (emojis) | ✅ |
-| Mover y escalar capas con los dedos sobre la vista previa | 🔜 Etapa 3 |
+| Mover, escalar y girar capas con los dedos sobre la vista previa | ✅ |
 | Plantillas de texto, estilo por palabra, fuentes descargables | 🔜 Etapa 3 |
 | Stickers animados y GIF | 🔜 Etapa 3 |
 | Subtítulos automáticos (voz a texto en el dispositivo) | 🧪 Etapa 4 |
@@ -214,12 +216,12 @@ Lista completa de lo pendiente, agrupada por la etapa en la que está previsto.
 - Foto: altas luces/sombras, curvas, HSL, viñeta, nitidez, grano, recorte libre y enderezado.
 
 **Etapa 3**
-- Superposición de vídeo (PiP), pistas ilimitadas, modos de fusión y máscaras.
+- Modos de fusión y máscaras en las capas; exportación más rápida de capas de vídeo.
 - Fotogramas clave (posición, escala, rotación, opacidad, volumen).
 - Curvas de velocidad, congelar fotograma, reproducir al revés.
 - Croma (pantalla verde).
 - Más transiciones (disolución, deslizar, zoom, desenfoque) y efectos (glitch, sacudida, destellos).
-- Mover capas con los dedos, plantillas de texto, stickers animados.
+- Plantillas de texto, stickers animados.
 - Marcadores de ritmo y forma de onda en las pistas de audio.
 - Foto: texto y stickers, collage, marcos y bordes.
 - Exportar GIF.

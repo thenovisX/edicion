@@ -226,20 +226,61 @@ object Timeline {
     fun removeText(project: Project, id: String): Project =
         project.copy(texts = project.texts.filterNot { it.id == id })
 
-    /** Mantiene los textos dentro de la duración del vídeo y con una duración mínima. */
+    /** Cambia el orden de apilado: al frente del todo o al fondo de las capas. */
+    fun moveLayerZ(project: Project, id: String, toFront: Boolean): Project {
+        val layer = project.texts.firstOrNull { it.id == id } ?: return project
+        val rest = project.texts.filterNot { it.id == id }
+        return project.copy(texts = if (toFront) rest + layer else listOf(layer) + rest)
+    }
+
+    /**
+     * Reparte las capas en filas de la línea de tiempo de forma que no se solapen.
+     * Devuelve la fila de cada capa (en el mismo orden que [layers]); si hacen falta más de
+     * [maxRows] filas, las sobrantes comparten la última.
+     */
+    fun layerRows(layers: List<TextLayer>, maxRows: Int): List<Int> {
+        val rowEnds = ArrayList<Long>()
+        val result = IntArray(layers.size)
+        for (i in layers.indices.sortedBy { layers[it].startMs }) {
+            val l = layers[i]
+            var row = rowEnds.indexOfFirst { it <= l.startMs }
+            if (row < 0) {
+                if (rowEnds.size < maxRows) {
+                    rowEnds += 0L
+                    row = rowEnds.lastIndex
+                } else {
+                    row = maxRows - 1
+                }
+            }
+            rowEnds[row] = maxOf(rowEnds[row], l.endMs)
+            result[i] = row
+        }
+        return result.toList()
+    }
+
+    /** Mantiene las capas dentro de la duración del vídeo y con una duración mínima. */
     private fun Project.clampTexts(): Project {
         val total = durationMs
         if (total <= 0) return this
         return copy(texts = texts.map { t ->
             val start = t.startMs.coerceIn(0, (total - MIN_CLIP_DURATION_MS).coerceAtLeast(0))
-            val end = t.endMs.coerceIn(start + MIN_CLIP_DURATION_MS, maxOf(total, start + MIN_CLIP_DURATION_MS))
+            var end = t.endMs.coerceIn(start + MIN_CLIP_DURATION_MS, maxOf(total, start + MIN_CLIP_DURATION_MS))
+            var trim = t.trimStartMs
+            if (t.isVideo) {
+                // Un vídeo no puede durar más que el material que queda desde su punto de inicio.
+                trim = trim.coerceIn(0, (t.sourceDurationMs - MIN_CLIP_DURATION_MS).coerceAtLeast(0))
+                end = minOf(end, start + (t.sourceDurationMs - trim).coerceAtLeast(MIN_CLIP_DURATION_MS))
+            }
             t.copy(
                 startMs = start,
                 endMs = end,
+                trimStartMs = trim,
                 x = t.x.coerceIn(-1f, 1f),
                 y = t.y.coerceIn(-1f, 1f),
-                scale = t.scale.coerceIn(0.2f, 5f),
+                scale = t.scale.coerceIn(0.1f, 6f),
                 opacity = t.opacity.coerceIn(0f, 1f),
+                volume = t.volume.coerceIn(0f, 2f),
+                rotation = ((t.rotation + 180f) % 360f + 360f) % 360f - 180f,
             )
         })
     }

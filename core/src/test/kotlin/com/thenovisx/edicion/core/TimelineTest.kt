@@ -211,3 +211,46 @@ class Stage2Test {
         assertEquals(TextFont.SANS, p.texts[0].font)
     }
 }
+
+class LayersTest {
+    private val base = Project(id = "p", name = "n", clips = listOf(Clip(id = "a", uri = "u", kind = MediaKind.VIDEO, sourceDurationMs = 20_000)))
+    private fun layer(id: String, s: Long, e: Long) = TextLayer(id = id, text = id, startMs = s, endMs = e)
+
+    @Test
+    fun rowsDoNotOverlap() {
+        val layers = listOf(layer("a", 0, 5_000), layer("b", 1_000, 3_000), layer("c", 5_000, 8_000), layer("d", 2_000, 9_000))
+        assertEquals(listOf(0, 1, 0, 2), Timeline.layerRows(layers, 4))
+        assertEquals(listOf(0, 1, 0, 1), Timeline.layerRows(layers, 2))
+    }
+
+    @Test
+    fun zOrder() {
+        var p = base.copy(texts = listOf(layer("a", 0, 1_000), layer("b", 0, 1_000), layer("c", 0, 1_000)))
+        p = Timeline.moveLayerZ(p, "a", toFront = true)
+        assertEquals(listOf("b", "c", "a"), p.texts.map { it.id })
+        p = Timeline.moveLayerZ(p, "c", toFront = false)
+        assertEquals(listOf("c", "b", "a"), p.texts.map { it.id })
+    }
+
+    @Test
+    fun videoLayerCannotExceedSource() {
+        val v = layer("v", 1_000, 15_000).copy(videoUri = "u", sourceDurationMs = 4_000, trimStartMs = 1_000)
+        val p = Timeline.addText(base, v)
+        assertEquals(4_000, p.texts[0].endMs)
+        assertEquals(2_500, LayerMath.videoPositionMs(p.texts[0], 2_500))
+    }
+
+    @Test
+    fun animationState() {
+        val l = layer("a", 1_000, 5_000).copy(animIn = LayerAnim.FADE, animOut = LayerAnim.SLIDE_UP)
+        assertEquals(0f, LayerMath.stateAt(l, 500).alpha)
+        assertEquals(0.5f, LayerMath.stateAt(l, 1_200).alpha, 1e-3f)
+        val rest = LayerMath.stateAt(l, 3_000)
+        assertEquals(1f, rest.alpha)
+        assertEquals(0f, rest.dy)
+        assertTrue(LayerMath.stateAt(l, 4_900).dy < 0f)
+        val t = layer("t", 0, 4_000).copy(text = "0123456789", animIn = LayerAnim.TYPEWRITER)
+        assertEquals(5, LayerMath.typewriterChars(t, 300))
+        assertNull(LayerMath.typewriterChars(t, 700))
+    }
+}

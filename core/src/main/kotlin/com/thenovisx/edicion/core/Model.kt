@@ -182,8 +182,21 @@ data class TextLayer(
     /** Si no es nulo, la capa es una imagen y [text] solo sirve de etiqueta. */
     val imageUri: String? = null,
     val isSticker: Boolean = false,
+    /** Si no es nulo, la capa es un vídeo superpuesto. */
+    val videoUri: String? = null,
+    /** Solo vídeo: duración del archivo, inicio del fragmento usado y audio. */
+    val sourceDurationMs: Long = 0,
+    val trimStartMs: Long = 0,
+    val volume: Float = 1f,
+    val muted: Boolean = false,
+    val hasAudio: Boolean = false,
+    /** Imagen o vídeo: proporción ancho/alto del contenido. */
+    val aspect: Float = 1f,
 ) {
     val isImage: Boolean get() = imageUri != null
+    val isVideo: Boolean get() = videoUri != null
+    /** Capa de imagen o vídeo (frente a texto o sticker). */
+    val isMedia: Boolean get() = isImage || isVideo
     val durationMs: Long get() = (endMs - startMs).coerceAtLeast(0)
     fun isVisibleAt(timeMs: Long) = timeMs in startMs until endMs
 }
@@ -215,3 +228,8 @@ const val MAX_TRANSITION_MS = 2_000L
 const val LAYER_ANIM_MS = 400L
 const val LANE_MUSIC = 0
 const val LANE_VOICE = 1
+/** Las capas de vídeo con sonido usan pistas de audio internas a partir de este número. */
+const val LANE_LAYER_BASE = 100
+/** Tamaño base de texto (fracción del alto) y de imagen/vídeo (fracción del ancho) con escala 1. */
+const val TEXT_BASE_HEIGHT = 0.045f
+const val MEDIA_BASE_WIDTH = 0.4f
