@@ -126,11 +126,11 @@ fun PhotoEditorScreen(uri: Uri, onBack: () -> Unit) {
             .navigationBarsPadding()
     ) {
         Row(
-            Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 4.dp),
+            Modifier.fillMaxWidth().background(Palette.Surface).height(56.dp).padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") }
-            Text("Editar foto", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text("Editar foto", fontWeight = FontWeight.Bold, fontSize = 17.sp, modifier = Modifier.weight(1f))
             IconButton(onClick = { edit = edit.copy(rotation = (edit.rotation + 90) % 360) }) {
                 Icon(Icons.Default.RotateRight, "Girar")
             }

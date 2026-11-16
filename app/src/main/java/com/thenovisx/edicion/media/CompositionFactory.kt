@@ -1,14 +1,7 @@
 package com.thenovisx.edicion.media
 
 import android.content.Context
-import android.graphics.Typeface
 import android.net.Uri
-import android.text.Spannable
-import android.text.SpannableString
-import android.text.style.AbsoluteSizeSpan
-import android.text.style.BackgroundColorSpan
-import android.text.style.ForegroundColorSpan
-import android.text.style.StyleSpan
 import androidx.media3.common.C
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
@@ -18,11 +11,9 @@ import androidx.media3.common.audio.ChannelMixingAudioProcessor
 import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.common.audio.SpeedProvider
 import androidx.media3.effect.OverlayEffect
-import androidx.media3.effect.OverlaySettings
 import androidx.media3.effect.Presentation
 import androidx.media3.effect.RgbMatrix
 import androidx.media3.effect.ScaleAndRotateTransformation
-import androidx.media3.effect.TextOverlay
 import androidx.media3.effect.TextureOverlay
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
@@ -35,6 +26,7 @@ import com.thenovisx.edicion.core.ColorMath
 import com.thenovisx.edicion.core.MediaKind
 import com.thenovisx.edicion.core.Project
 import com.thenovisx.edicion.core.TextLayer
+import com.thenovisx.edicion.core.Timeline
 
 /**
  * Convierte un [Project] en una [Composition] de Media3. Se usa tanto para la vista previa
@@ -53,9 +45,11 @@ class CompositionFactory(private val context: Context) {
         val videoItems = project.clips.map { videoItem(it, w, h) }
         val sequences = mutableListOf(EditedMediaItemSequence(videoItems))
 
-        audioSequence(project)?.let { sequences += it }
+        project.audio.groupBy { it.lane }.toSortedMap().values.forEach { lane ->
+            audioSequence(lane, project.durationMs)?.let { sequences += it }
+        }
 
-        val compositionEffects = textEffects(project.texts, h)
+        val compositionEffects = layerEffects(project.texts, w, h) + transitionEffects(project)
 
         return Composition.Builder(sequences)
             .setEffects(Effects(emptyList(), compositionEffects))
@@ -120,9 +114,8 @@ class CompositionFactory(private val context: Context) {
 
     // ---------- Audio ----------
 
-    private fun audioSequence(project: Project): EditedMediaItemSequence? {
-        val total = project.durationMs
-        val clips = project.audio.sortedBy { it.startMs }.filter { it.startMs < total }
+    private fun audioSequence(lane: List<AudioClip>, total: Long): EditedMediaItemSequence? {
+        val clips = lane.sortedBy { it.startMs }.filter { it.startMs < total }
         if (clips.isEmpty()) return null
         val items = mutableListOf<EditedMediaItem>()
         var cursor = 0L
@@ -135,6 +128,8 @@ class CompositionFactory(private val context: Context) {
             cursor = end
         }
         if (items.isEmpty()) return null
+        // Rellena con silencio hasta el final: la vista previa repite en bucle las pistas más cortas.
+        if (cursor < total) items += silenceItems(total - cursor)
         return EditedMediaItemSequence(items)
     }
 
@@ -182,38 +177,25 @@ class CompositionFactory(private val context: Context) {
             }
         }
 
-    // ---------- Texto ----------
+    // ---------- Capas y transiciones ----------
 
-    private fun textEffects(texts: List<TextLayer>, outH: Int): List<Effect> {
-        if (texts.isEmpty()) return emptyList()
-        val overlays = texts.map<TextLayer, TextureOverlay> { TimedTextOverlay(it, outH) }
+    private fun layerEffects(layers: List<TextLayer>, outW: Int, outH: Int): List<Effect> {
+        if (layers.isEmpty()) return emptyList()
+        val overlays = layers.map<TextLayer, TextureOverlay> { LayerOverlay(context, it, outW, outH) }
         return listOf(OverlayEffect(ImmutableList.copyOf(overlays)))
     }
 
-    private class TimedTextOverlay(private val layer: TextLayer, outH: Int) : TextOverlay() {
-        private val text: SpannableString = SpannableString(layer.text.ifEmpty { " " }).apply {
-            val end = length
-            val px = (outH * 0.045f * layer.scale).toInt().coerceAtLeast(8)
-            setSpan(AbsoluteSizeSpan(px), 0, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-            setSpan(ForegroundColorSpan(layer.colorArgb.toInt()), 0, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-            if (layer.backgroundArgb ushr 24 != 0L) {
-                setSpan(BackgroundColorSpan(layer.backgroundArgb.toInt()), 0, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-            }
-            if (layer.bold) setSpan(StyleSpan(Typeface.BOLD), 0, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
-        private val visible = OverlaySettings.Builder()
-            // y positiva hacia arriba en coordenadas NDC; en el modelo y positiva es hacia abajo.
-            .setBackgroundFrameAnchor(layer.x, -layer.y)
-            .build()
-        private val hidden = OverlaySettings.Builder()
-            .setBackgroundFrameAnchor(layer.x, -layer.y)
-            .setAlphaScale(0f)
-            .build()
-
-        override fun getText(presentationTimeUs: Long): SpannableString = text
-
-        override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings =
-            if (layer.isVisibleAt(presentationTimeUs / 1000)) visible else hidden
+    /** Fundidos a negro o blanco alrededor de los cortes que tienen transición. */
+    private fun transitionEffects(project: Project): List<Effect> {
+        val cuts = Timeline.transitionCuts(project)
+        if (cuts.isEmpty()) return emptyList()
+        val identity = floatArrayOf(1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f)
+        return listOf(RgbMatrix { presentationTimeUs, _ ->
+            val fade = Timeline.fadeAt(cuts, presentationTimeUs / 1000) ?: return@RgbMatrix identity
+            val keep = 1f - fade.amount
+            val add = if (fade.white) fade.amount else 0f
+            floatArrayOf(keep, 0f, 0f, 0f, 0f, keep, 0f, 0f, 0f, 0f, keep, 0f, add, add, add, 1f)
+        })
     }
 
     private class ConstantSpeed(private val speed: Float) : SpeedProvider {

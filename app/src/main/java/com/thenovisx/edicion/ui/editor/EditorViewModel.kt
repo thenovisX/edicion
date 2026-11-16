@@ -9,6 +9,8 @@ import com.thenovisx.edicion.core.AspectRatio
 import com.thenovisx.edicion.core.AudioClip
 import com.thenovisx.edicion.core.Clip
 import com.thenovisx.edicion.core.History
+import com.thenovisx.edicion.core.LANE_VOICE
+import com.thenovisx.edicion.core.LayerAnim
 import com.thenovisx.edicion.core.Project
 import com.thenovisx.edicion.core.TextLayer
 import com.thenovisx.edicion.core.Timeline
@@ -17,6 +19,7 @@ import com.thenovisx.edicion.media.ExportOptions
 import com.thenovisx.edicion.media.MediaImporter
 import com.thenovisx.edicion.media.PreviewEngine
 import com.thenovisx.edicion.media.VideoExporter
+import com.thenovisx.edicion.media.VoiceRecorder
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -251,7 +254,7 @@ class EditorViewModel(app: Application, savedState: SavedStateHandle) : AndroidV
         when (val s = _state.value.selection) {
             is Selection.Audio -> {
                 var newId: String? = null
-                edit { p -> Timeline.splitAudioAt(p, t, MediaImporter.newId()).also { newId = it.second }.first }
+                edit { p -> Timeline.splitAudioAt(p, t, MediaImporter.newId(), s.id).also { newId = it.second }.first }
                 if (newId == null) toast("Coloca el cabezal dentro del audio para dividirlo")
             }
             is Selection.Text -> {
@@ -314,21 +317,88 @@ class EditorViewModel(app: Application, savedState: SavedStateHandle) : AndroidV
         if (live) live { Timeline.updateText(it, id, transform) } else edit { Timeline.updateText(it, id, transform) }
     }
 
-    fun addText(text: String) {
+    fun addText(text: String) = addLayer { start, end ->
+        TextLayer(id = MediaImporter.newId(), text = text, startMs = start, endMs = end, shadow = true)
+    }
+
+    fun addSticker(emoji: String) = addLayer { start, end ->
+        TextLayer(
+            id = MediaImporter.newId(), text = emoji, startMs = start, endMs = end,
+            scale = 2.5f, bold = false, isSticker = true, animIn = LayerAnim.POP,
+        )
+    }
+
+    fun addImageLayer(uri: Uri) {
+        viewModelScope.launch {
+            val name = importer.prepareImageLayer(uri)
+            if (name == null) {
+                toast("No se pudo leer la imagen")
+                return@launch
+            }
+            addLayer { start, end ->
+                TextLayer(id = MediaImporter.newId(), text = name, startMs = start, endMs = end, imageUri = uri.toString())
+            }
+        }
+    }
+
+    private fun addLayer(create: (startMs: Long, endMs: Long) -> TextLayer) {
         val p = currentProject() ?: return
         if (p.clips.isEmpty()) {
             toast("Añade primero un vídeo o una foto")
             return
         }
         val start = _state.value.playheadMs.coerceAtMost((p.durationMs - 500).coerceAtLeast(0))
-        val layer = TextLayer(
-            id = MediaImporter.newId(),
-            text = text,
-            startMs = start,
-            endMs = minOf(start + 3_000, p.durationMs),
-        )
+        val layer = create(start, minOf(start + 3_000, p.durationMs))
         edit { Timeline.addText(it, layer) }
         select(Selection.Text(layer.id))
+    }
+
+    // ---------- Voz en off ----------
+
+    private val recorder = VoiceRecorder(app)
+    private var voiceStartMs = 0L
+    private val _recording = MutableStateFlow(false)
+    val recording: StateFlow<Boolean> = _recording.asStateFlow()
+    val recordingElapsedMs: Long get() = recorder.elapsedMs
+
+    fun startVoice() {
+        val p = currentProject() ?: return
+        if (p.clips.isEmpty()) {
+            toast("Añade primero un vídeo o una foto")
+            return
+        }
+        engine.pause()
+        voiceStartMs = _state.value.playheadMs
+        try {
+            recorder.start()
+            _recording.value = true
+        } catch (e: Exception) {
+            toast("No se pudo usar el micrófono")
+        }
+    }
+
+    fun stopVoice(keep: Boolean) {
+        if (!_recording.value) return
+        _recording.value = false
+        val file = recorder.stop()
+        if (!keep) {
+            file?.delete()
+            return
+        }
+        if (file == null) {
+            toast("La grabación es demasiado corta")
+            return
+        }
+        viewModelScope.launch {
+            val n = (currentProject()?.audio?.count { it.lane == LANE_VOICE } ?: 0) + 1
+            val clip = importer.importVoice(file, "Voz $n")
+            if (clip == null) {
+                toast("No se pudo guardar la grabación")
+                return@launch
+            }
+            edit { Timeline.addAudio(it, clip, voiceStartMs) }
+            select(Selection.Audio(clip.id))
+        }
     }
 
     fun setAspectRatio(ratio: AspectRatio) = edit { it.copy(aspectRatio = ratio) }
@@ -374,6 +444,7 @@ class EditorViewModel(app: Application, savedState: SavedStateHandle) : AndroidV
     override fun onCleared() {
         // Guarda de inmediato por si quedaba un guardado pendiente.
         currentProject()?.let { p -> kotlinx.coroutines.runBlocking { repo.save(p) } }
+        if (_recording.value) recorder.cancel()
         engine.release()
     }
 }

@@ -18,10 +18,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -38,33 +45,38 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.thenovisx.edicion.core.Clip
+import com.thenovisx.edicion.core.LANE_MUSIC
+import com.thenovisx.edicion.core.LANE_VOICE
 import com.thenovisx.edicion.core.MediaKind
 import com.thenovisx.edicion.core.Project
 import com.thenovisx.edicion.core.Timeline
+import com.thenovisx.edicion.core.TransitionType
 import com.thenovisx.edicion.core.formatTime
 import com.thenovisx.edicion.media.Thumbnails
 import com.thenovisx.edicion.ui.theme.Palette
 import kotlin.math.roundToInt
 
 private val RulerHeight = 22.dp
-private val VideoHeight = 60.dp
-private val AudioHeight = 34.dp
-private val TextHeight = 30.dp
-private val TrackGap = 6.dp
+private val VideoHeight = 58.dp
+private val LaneHeight = 30.dp
+private val TrackGap = 5.dp
 
 /**
  * Línea de tiempo con el cabezal fijo en el centro. Arrastrar mueve el tiempo,
  * pellizcar cambia el zoom y tocar un elemento lo selecciona.
+ * Pistas, de arriba abajo: vídeo, capas (texto, stickers, imágenes), música y voz.
  */
 @Composable
 fun TimelineView(
@@ -94,13 +106,12 @@ fun TimelineView(
         val center by rememberUpdatedState(centerPx)
         fun xOf(ms: Long): Float = centerPx + (ms - playheadMs) / 1000f * pxPerSec
 
-        val rowsTop = with(density) {
-            listOf(
-                RulerHeight.toPx(),
-                (RulerHeight + VideoHeight + TrackGap).toPx(),
-                (RulerHeight + VideoHeight + AudioHeight + TrackGap * 2).toPx(),
-                (RulerHeight + VideoHeight + AudioHeight + TextHeight + TrackGap * 3).toPx(),
-            )
+        // Límite inferior de cada fila, para saber qué se ha tocado.
+        val rowsBottom = with(density) {
+            val r = RulerHeight.toPx()
+            val v = r + (VideoHeight + TrackGap).toPx()
+            val lane = (LaneHeight + TrackGap).toPx()
+            listOf(r, v, v + lane, v + lane * 2, v + lane * 3)
         }
 
         Box(
@@ -108,30 +119,31 @@ fun TimelineView(
                 .fillMaxSize()
                 .pointerInput(Unit) {
                     detectTransformGestures { _, pan, zoom, _ ->
-                        if (zoom != 1f) {
-                            pxPerSec = (pxPerSec * zoom).coerceIn(8f, 2000f)
-                        }
-                        if (pan.x != 0f) {
-                            val deltaMs = (-pan.x / pxPerSec * 1000f).toLong()
-                            scrub(currentPlayhead + deltaMs)
-                        }
+                        if (zoom != 1f) pxPerSec = (pxPerSec * zoom).coerceIn(8f, 2000f)
+                        if (pan.x != 0f) scrub(currentPlayhead + (-pan.x / pxPerSec * 1000f).toLong())
                     }
                 }
                 .pointerInput(Unit) {
                     detectTapGestures { pos: Offset ->
                         val p = currentProject
                         val tMs = currentPlayhead + ((pos.x - center) / pxPerSec * 1000f).toLong()
+                        fun audioIn(lane: Int) = p.audio.firstOrNull { it.lane == lane && tMs in it.startMs until it.endMs }
+                            ?.let { Selection.Audio(it.id) }
                         val sel: Selection = when {
-                            pos.y < rowsTop[0] -> Selection.None
-                            pos.y < rowsTop[1] -> Timeline.clipAt(p, tMs)
+                            pos.y < rowsBottom[0] -> Selection.None
+                            pos.y < rowsBottom[1] -> Timeline.clipAt(p, tMs)
                                 ?.takeIf { tMs in 0 until p.durationMs }
-                                ?.let { Selection.VideoClip(p.clips[it.index].id) } ?: Selection.None
-                            pos.y < rowsTop[2] -> p.audio.firstOrNull { tMs in it.startMs until it.endMs }
-                                ?.let { Selection.Audio(it.id) } ?: Selection.None
-                            pos.y < rowsTop[3] -> p.texts.lastOrNull { it.isVisibleAt(tMs) }
-                                ?.let { Selection.Text(it.id) } ?: Selection.None
-                            else -> Selection.None
-                        }
+                                ?.let { Selection.VideoClip(p.clips[it.index].id) }
+                            pos.y < rowsBottom[2] -> {
+                                // Si hay varias capas a la vez, cada toque pasa a la siguiente.
+                                val hits = p.texts.filter { it.isVisibleAt(tMs) }
+                                val cur = hits.indexOfFirst { currentSelection == Selection.Text(it.id) }
+                                hits.getOrNull(if (cur < 0) hits.lastIndex else cur - 1)?.let { Selection.Text(it.id) }
+                            }
+                            pos.y < rowsBottom[3] -> audioIn(LANE_MUSIC)
+                            pos.y < rowsBottom[4] -> audioIn(LANE_VOICE)
+                            else -> null
+                        } ?: Selection.None
                         selectItem(if (sel == currentSelection) Selection.None else sel)
                     }
                 }
@@ -140,18 +152,20 @@ fun TimelineView(
                 Ruler(playheadMs, pxPerSec, centerPx, Modifier.fillMaxWidth().height(RulerHeight))
 
                 // Pista de vídeo
-                Box(Modifier.fillMaxWidth().height(VideoHeight)) {
+                Lane(VideoHeight) {
                     val starts = Timeline.clipStarts(project)
                     project.clips.forEachIndexed { i, clip ->
                         val x = xOf(starts[i])
                         val w = clip.durationMs / 1000f * pxPerSec
                         if (x + w >= 0 && x <= widthPx) {
-                            ClipBox(
-                                clip = clip,
-                                xPx = x,
-                                widthPx = w,
-                                selected = selection == Selection.VideoClip(clip.id),
-                            )
+                            ClipBox(clip, x, w, selection == Selection.VideoClip(clip.id))
+                        }
+                    }
+                    // Marca de transición sobre cada corte que la tiene.
+                    project.clips.forEachIndexed { i, clip ->
+                        if (clip.transition != TransitionType.NONE) {
+                            val x = xOf(starts[i])
+                            if (x >= -40 && x <= widthPx + 40) TransitionBadge(x)
                         }
                     }
                     if (project.clips.isEmpty()) {
@@ -165,56 +179,106 @@ fun TimelineView(
                 }
                 Spacer(Modifier.height(TrackGap))
 
-                // Pista de audio
-                Box(Modifier.fillMaxWidth().height(AudioHeight)) {
-                    project.audio.forEach { a ->
-                        val x = xOf(a.startMs)
-                        val w = a.durationMs / 1000f * pxPerSec
-                        if (x + w >= 0 && x <= widthPx) {
-                            LaneItem(
-                                label = a.name.ifEmpty { "Audio" },
-                                icon = { Icon(Icons.Default.MusicNote, null, Modifier.padding(end = 2.dp).width(14.dp), tint = Color.Black) },
-                                color = Palette.Teal,
-                                xPx = x,
-                                widthPx = w,
-                                height = AudioHeight,
-                                selected = selection == Selection.Audio(a.id),
-                            )
-                        }
-                    }
-                }
-                Spacer(Modifier.height(TrackGap))
-
-                // Pista de textos
-                Box(Modifier.fillMaxWidth().height(TextHeight)) {
+                // Pista de capas
+                Lane(LaneHeight) {
                     project.texts.forEach { t ->
                         val x = xOf(t.startMs)
                         val w = t.durationMs / 1000f * pxPerSec
                         if (x + w >= 0 && x <= widthPx) {
                             LaneItem(
                                 label = t.text,
-                                icon = { Icon(Icons.Default.TextFields, null, Modifier.padding(end = 2.dp).width(14.dp), tint = Color.White) },
-                                color = Palette.Violet,
+                                icon = if (t.isImage) Icons.Default.Image else Icons.Default.TextFields,
+                                color = if (t.isImage) Palette.Pink else Palette.Violet,
                                 xPx = x,
                                 widthPx = w,
-                                height = TextHeight,
                                 selected = selection == Selection.Text(t.id),
-                                textColor = Color.White,
                             )
                         }
                     }
                 }
+                Spacer(Modifier.height(TrackGap))
+
+                listOf(LANE_MUSIC to Palette.Teal, LANE_VOICE to Palette.Amber).forEach { (lane, color) ->
+                    Lane(LaneHeight) {
+                        project.audio.filter { it.lane == lane }.forEach { a ->
+                            val x = xOf(a.startMs)
+                            val w = a.durationMs / 1000f * pxPerSec
+                            if (x + w >= 0 && x <= widthPx) {
+                                LaneItem(
+                                    label = a.name.ifEmpty { "Audio" },
+                                    icon = if (lane == LANE_VOICE) Icons.Default.Mic else Icons.Default.MusicNote,
+                                    color = color,
+                                    xPx = x,
+                                    widthPx = w,
+                                    selected = selection == Selection.Audio(a.id),
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(TrackGap))
+                }
+            }
+
+            // Iconos fijos que indican qué es cada pista.
+            Column(Modifier.padding(top = RulerHeight, start = 4.dp)) {
+                LaneLabel(Icons.Default.Movie, VideoHeight)
+                Spacer(Modifier.height(TrackGap))
+                LaneLabel(Icons.Default.Layers, LaneHeight)
+                Spacer(Modifier.height(TrackGap))
+                LaneLabel(Icons.Default.MusicNote, LaneHeight)
+                Spacer(Modifier.height(TrackGap))
+                LaneLabel(Icons.Default.Mic, LaneHeight)
             }
 
             // Cabezal
             Box(
                 Modifier
-                    .offset { IntOffset((centerPx - with(density) { 1.dp.toPx() }).roundToInt(), 0) }
-                    .width(2.dp)
+                    .offset { IntOffset((centerPx - with(density) { 1.5.dp.toPx() }).roundToInt(), 0) }
+                    .width(3.dp)
                     .fillMaxHeight()
-                    .background(Palette.Playhead)
+                    .background(Palette.Playhead, RoundedCornerShape(2.dp))
             )
         }
+    }
+}
+
+/** Fila de la línea de tiempo con un fondo visible para que se distinga del resto. */
+@Composable
+private fun Lane(height: Dp, content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(height)
+            .background(Palette.Surface),
+        content = content,
+    )
+}
+
+@Composable
+private fun LaneLabel(icon: ImageVector, height: Dp) {
+    Box(Modifier.height(height), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.size(22.dp).background(Palette.Background.copy(alpha = 0.75f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, null, tint = Palette.OnSurfaceMuted, modifier = Modifier.size(14.dp))
+        }
+    }
+}
+
+@Composable
+private fun TransitionBadge(xPx: Float) {
+    val density = LocalDensity.current
+    val half = with(density) { 11.dp.toPx() }
+    Box(
+        Modifier
+            .offset { IntOffset((xPx - half).roundToInt(), with(density) { ((VideoHeight - 22.dp) / 2).roundToPx() }) }
+            .size(22.dp)
+            .background(Palette.Amber, CircleShape)
+            .border(1.5.dp, Color.Black, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Default.SwapHoriz, "Transición", tint = Color.Black, modifier = Modifier.size(16.dp))
     }
 }
 
@@ -232,9 +296,9 @@ private fun Ruler(playheadMs: Long, pxPerSec: Float, centerPx: Float, modifier: 
             var t = firstMs
             while (t <= lastMs) {
                 val x = centerPx + (t - playheadMs) / 1000f * pxPerSec
-                drawLine(Palette.OnSurfaceMuted, Offset(x, size.height * 0.55f), Offset(x, size.height), strokeWidth = 1.5f)
+                drawLine(Palette.OnSurfaceMuted, Offset(x, size.height * 0.5f), Offset(x, size.height), strokeWidth = 2f)
                 val half = x + stepMs / 2000f * pxPerSec
-                drawLine(Palette.OnSurfaceMuted.copy(alpha = 0.4f), Offset(half, size.height * 0.8f), Offset(half, size.height), strokeWidth = 1f)
+                drawLine(Palette.Outline, Offset(half, size.height * 0.75f), Offset(half, size.height), strokeWidth = 2f)
                 t += stepMs
             }
         }
@@ -244,8 +308,8 @@ private fun Ruler(playheadMs: Long, pxPerSec: Float, centerPx: Float, modifier: 
             Text(
                 formatTime(t, tenths = stepMs < 1000),
                 color = Palette.OnSurfaceMuted,
-                fontSize = 9.sp,
-                modifier = Modifier.offset { IntOffset((x + 3).roundToInt(), 0) },
+                fontSize = 10.sp,
+                modifier = Modifier.offset { IntOffset((x + 4).roundToInt(), 0) },
             )
             t += stepMs
         }
@@ -261,20 +325,21 @@ private fun ClipBox(clip: Clip, xPx: Float, widthPx: Float, selected: Boolean) {
         thumb = Thumbnails.load(context, clip.uri, clip.kind, clip.trimStartMs)
     }
     val wDp: Dp = with(density) { (widthPx - 2f).coerceAtLeast(2f).toDp() }
+    val shape = RoundedCornerShape(6.dp)
     Box(
         Modifier
             .offset { IntOffset(xPx.roundToInt() + 1, 0) }
             .width(wDp)
             .fillMaxHeight()
-            .clip(RoundedCornerShape(6.dp))
+            .clip(shape)
             .background(Palette.SurfaceHigh)
-            .then(if (selected) Modifier.border(2.dp, Palette.Coral, RoundedCornerShape(6.dp)) else Modifier)
+            .border(if (selected) 3.dp else 1.dp, if (selected) Palette.Coral else Palette.Outline, shape)
     ) {
         thumb?.let { bmp ->
             // Repite la miniatura a lo largo del clip, como una tira de fotogramas.
             val tileDp = VideoHeight * (bmp.width.toFloat() / bmp.height.coerceAtLeast(1)).coerceIn(0.5f, 1.8f)
             val tiles = (wDp / tileDp).toInt() + 1
-            Row(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxSize().padding(if (selected) 3.dp else 1.dp)) {
                 repeat(tiles.coerceAtMost(40)) {
                     Image(
                         bitmap = bmp.asImageBitmap(),
@@ -287,12 +352,13 @@ private fun ClipBox(clip: Clip, xPx: Float, widthPx: Float, selected: Boolean) {
         }
         Row(
             Modifier
-                .align(Alignment.BottomStart)
-                .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(topEnd = 6.dp))
+                .align(Alignment.BottomEnd)
+                .padding(3.dp)
+                .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(4.dp))
                 .padding(horizontal = 4.dp, vertical = 1.dp)
         ) {
             val speed = if (clip.kind == MediaKind.VIDEO && clip.speed != 1f) " · ${clip.speed}×" else ""
-            Text(formatTime(clip.durationMs) + speed, color = Color.White, fontSize = 9.sp)
+            Text(formatTime(clip.durationMs) + speed, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -300,31 +366,37 @@ private fun ClipBox(clip: Clip, xPx: Float, widthPx: Float, selected: Boolean) {
 @Composable
 private fun LaneItem(
     label: String,
-    icon: @Composable () -> Unit,
+    icon: ImageVector,
     color: Color,
     xPx: Float,
     widthPx: Float,
-    height: Dp,
     selected: Boolean,
-    textColor: Color = Color.Black,
 ) {
     val density = LocalDensity.current
     val wDp = with(density) { (widthPx - 2f).coerceAtLeast(2f).toDp() }
+    val shape = RoundedCornerShape(6.dp)
     Row(
         Modifier
             .offset { IntOffset(xPx.roundToInt() + 1, 0) }
             .width(wDp)
-            .height(height)
-            .clip(RoundedCornerShape(6.dp))
-            .background(color.copy(alpha = if (selected) 1f else 0.75f))
-            .then(if (selected) Modifier.border(2.dp, Color.White, RoundedCornerShape(6.dp)) else Modifier)
+            .fillMaxHeight()
+            .clip(shape)
+            .background(color)
+            .then(if (selected) Modifier.border(3.dp, Color.White, shape) else Modifier)
             .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        icon()
-        Text(label, color = textColor, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Icon(icon, null, Modifier.padding(end = 3.dp).size(14.dp), tint = Color.Black)
+        Text(
+            label,
+            color = Color.Black,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
-/** Altura total recomendada de la línea de tiempo. */
-val TimelineHeight: Dp = RulerHeight + VideoHeight + AudioHeight + TextHeight + TrackGap * 3 + 8.dp
+/** Altura total de la línea de tiempo. */
+val TimelineHeight: Dp = RulerHeight + VideoHeight + LaneHeight * 3 + TrackGap * 4 + 4.dp

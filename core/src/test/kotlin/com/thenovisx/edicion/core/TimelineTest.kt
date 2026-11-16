@@ -165,3 +165,49 @@ class TimelineTest {
         assertTrue(ColorMath.filter(FilterPreset.SEPIA).withIntensity(0f).isIdentity)
     }
 }
+
+class Stage2Test {
+    private fun video(id: String, ms: Long) = Clip(id = id, uri = "u", kind = MediaKind.VIDEO, sourceDurationMs = ms)
+
+    @Test
+    fun lanesAreIndependent() {
+        var p = Project(id = "p", name = "n", clips = listOf(video("a", 20_000)))
+        p = Timeline.addAudio(p, AudioClip(id = "m", uri = "u", sourceDurationMs = 5_000), 0)
+        p = Timeline.addAudio(p, AudioClip(id = "v", uri = "u", sourceDurationMs = 5_000, lane = LANE_VOICE), 1_000)
+        assertEquals(0, p.audio.first { it.id == "m" }.startMs)
+        assertEquals(1_000, p.audio.first { it.id == "v" }.startMs)
+        p = Timeline.addAudio(p, AudioClip(id = "v2", uri = "u", sourceDurationMs = 5_000, lane = LANE_VOICE), 2_000)
+        assertEquals(6_000, p.audio.first { it.id == "v2" }.startMs)
+    }
+
+    @Test
+    fun fades() {
+        val p = Project(
+            id = "p", name = "n",
+            clips = listOf(
+                video("a", 10_000).copy(transition = TransitionType.FADE_BLACK, transitionMs = 1_000),
+                video("b", 10_000).copy(transition = TransitionType.FADE_WHITE, transitionMs = 1_000),
+                video("c", 10_000),
+            ),
+        )
+        // Fundido de entrada del primer clip.
+        assertEquals(1f, Timeline.fadeAt(p, 0)!!.amount, 1e-3f)
+        assertEquals(0.5f, Timeline.fadeAt(p, 500)!!.amount, 1e-3f)
+        assertNull(Timeline.fadeAt(p, 5_000))
+        // Corte a los 10 s: medio segundo a cada lado, en blanco.
+        val before = Timeline.fadeAt(p, 9_750)!!
+        assertTrue(before.white)
+        assertEquals(0.5f, before.amount, 1e-3f)
+        assertEquals(1f, Timeline.fadeAt(p, 10_000)!!.amount, 1e-3f)
+        assertEquals(0.5f, Timeline.fadeAt(p, 10_250)!!.amount, 1e-3f)
+        assertNull(Timeline.fadeAt(p, 20_000))
+    }
+
+    @Test
+    fun oldProjectsStillLoad() {
+        val old = """{"id":"p","name":"n","clips":[{"id":"a","uri":"u","kind":"VIDEO","sourceDurationMs":1000}],"texts":[{"id":"t","text":"x","startMs":0,"endMs":500}]}"""
+        val p = ProjectJson.decode(old)
+        assertEquals(TransitionType.NONE, p.clips[0].transition)
+        assertEquals(TextFont.SANS, p.texts[0].font)
+    }
+}

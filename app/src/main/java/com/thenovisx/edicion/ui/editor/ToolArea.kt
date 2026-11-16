@@ -15,11 +15,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Animation
+import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
@@ -56,6 +63,10 @@ import androidx.compose.ui.unit.sp
 import com.thenovisx.edicion.core.Adjustments
 import com.thenovisx.edicion.core.AspectRatio
 import com.thenovisx.edicion.core.FilterPreset
+import com.thenovisx.edicion.core.LayerAnim
+import com.thenovisx.edicion.core.MAX_TRANSITION_MS
+import com.thenovisx.edicion.core.TextFont
+import com.thenovisx.edicion.core.TransitionType
 import com.thenovisx.edicion.core.MAX_IMAGE_DURATION_MS
 import com.thenovisx.edicion.core.MIN_CLIP_DURATION_MS
 import com.thenovisx.edicion.core.MediaKind
@@ -79,17 +90,20 @@ enum class Panel(val title: String) {
     TEXT_STYLE("Estilo"),
     TEXT_POSITION("Posición"),
     TEXT_TIME("Tiempo"),
+    TRANSITION("Transición"),
+    LAYER_ANIM("Animación"),
+    IMAGE_STYLE("Imagen"),
 }
 
 fun panelsFor(selection: Selection, project: Project?): Set<Panel> = when (selection) {
     Selection.None -> setOf(Panel.FORMAT)
     is Selection.VideoClip -> {
         val clip = project?.clips?.firstOrNull { it.id == selection.id }
-        if (clip?.kind == MediaKind.IMAGE) setOf(Panel.IMAGE_DURATION, Panel.FILTERS, Panel.ADJUST)
-        else setOf(Panel.TRIM, Panel.SPEED, Panel.VOLUME, Panel.FILTERS, Panel.ADJUST)
+        if (clip?.kind == MediaKind.IMAGE) setOf(Panel.IMAGE_DURATION, Panel.FILTERS, Panel.ADJUST, Panel.TRANSITION)
+        else setOf(Panel.TRIM, Panel.SPEED, Panel.VOLUME, Panel.FILTERS, Panel.ADJUST, Panel.TRANSITION)
     }
     is Selection.Audio -> setOf(Panel.AUDIO_TRIM, Panel.AUDIO_VOLUME)
-    is Selection.Text -> setOf(Panel.TEXT_STYLE, Panel.TEXT_POSITION, Panel.TEXT_TIME)
+    is Selection.Text -> setOf(Panel.TEXT_STYLE, Panel.IMAGE_STYLE, Panel.TEXT_POSITION, Panel.TEXT_TIME, Panel.LAYER_ANIM)
 }
 
 @Composable
@@ -103,6 +117,9 @@ fun ToolArea(
     onAddAudio: () -> Unit,
     onAddText: () -> Unit,
     onEditText: (String) -> Unit,
+    onAddSticker: () -> Unit,
+    onAddImageLayer: () -> Unit,
+    onVoice: () -> Unit,
 ) {
     Column(
         Modifier
@@ -115,10 +132,19 @@ fun ToolArea(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(panel.title, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                IconButton(onClick = { onPanel(null) }) { Icon(Icons.Default.Check, "Listo") }
+                Text(panel.title, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                IconButton(
+                    onClick = { onPanel(null) },
+                    modifier = Modifier.size(36.dp).background(Palette.Coral, CircleShape),
+                ) { Icon(Icons.Default.Check, "Listo", tint = Color.Black) }
             }
-            Box(Modifier.fillMaxWidth().height(150.dp).padding(horizontal = 12.dp)) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(170.dp)
+                    .padding(horizontal = 12.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 PanelContent(panel, project, state.selection, vm)
             }
         } else {
@@ -131,15 +157,18 @@ fun ToolArea(
             ) {
                 when (val sel = state.selection) {
                     Selection.None -> {
-                        Tool("Medios", Icons.Default.AddPhotoAlternate, onAddMedia)
-                        Tool("Audio", Icons.Default.LibraryMusic, onAddAudio)
-                        Tool("Texto", Icons.Default.TextFields, onAddText)
-                        Tool("Dividir", Icons.Default.ContentCut, vm::splitAtPlayhead)
+                        Tool("Medios", Icons.Default.AddPhotoAlternate, Palette.Coral, onClick = onAddMedia)
+                        Tool("Texto", Icons.Default.TextFields, Palette.Violet, onClick = onAddText)
+                        Tool("Sticker", Icons.Default.EmojiEmotions, Palette.Amber, onClick = onAddSticker)
+                        Tool("Imagen", Icons.Default.Image, Palette.Pink, onClick = onAddImageLayer)
+                        Tool("Música", Icons.Default.LibraryMusic, Palette.Teal, onClick = onAddAudio)
+                        Tool("Voz", Icons.Default.Mic, Palette.Green, onClick = onVoice)
+                        Tool("Dividir", Icons.Default.ContentCut, Palette.Blue, onClick = vm::splitAtPlayhead)
                         Tool("Formato", Icons.Default.AspectRatio) { onPanel(Panel.FORMAT) }
                     }
                     is Selection.VideoClip -> {
                         val clip = project.clips.firstOrNull { it.id == sel.id }
-                        Tool("Dividir", Icons.Default.ContentCut, vm::splitAtPlayhead)
+                        Tool("Dividir", Icons.Default.ContentCut, onClick = vm::splitAtPlayhead)
                         if (clip?.kind == MediaKind.IMAGE) {
                             Tool("Duración", Icons.Default.Timer) { onPanel(Panel.IMAGE_DURATION) }
                         } else {
@@ -149,27 +178,34 @@ fun ToolArea(
                         }
                         Tool("Filtros", Icons.Default.PhotoFilter) { onPanel(Panel.FILTERS) }
                         Tool("Ajustes", Icons.Default.Tune) { onPanel(Panel.ADJUST) }
+                        Tool("Transición", Icons.Default.SwapHoriz) { onPanel(Panel.TRANSITION) }
                         Tool("Girar", Icons.Default.RotateRight) { vm.updateClip(sel.id) { it.copy(rotation = it.rotation + 90) } }
                         Tool("Espejo", Icons.Default.Flip) { vm.updateClip(sel.id) { it.copy(flipHorizontal = !it.flipHorizontal) } }
-                        Tool("Duplicar", Icons.Default.ContentCopy, vm::duplicateSelection)
+                        Tool("Duplicar", Icons.Default.ContentCopy, onClick = vm::duplicateSelection)
                         Tool("Antes", Icons.AutoMirrored.Filled.ArrowBack) { vm.moveSelectedClip(-1) }
                         Tool("Después", Icons.AutoMirrored.Filled.ArrowForward) { vm.moveSelectedClip(1) }
-                        Tool("Borrar", Icons.Default.Delete, vm::deleteSelection)
+                        Tool("Borrar", Icons.Default.Delete, Palette.Coral, onClick = vm::deleteSelection)
                     }
                     is Selection.Audio -> {
-                        Tool("Dividir", Icons.Default.ContentCut, vm::splitAtPlayhead)
+                        Tool("Dividir", Icons.Default.ContentCut, onClick = vm::splitAtPlayhead)
                         Tool("Recortar", Icons.Default.Straighten) { onPanel(Panel.AUDIO_TRIM) }
                         Tool("Volumen", Icons.Default.VolumeUp) { onPanel(Panel.AUDIO_VOLUME) }
-                        Tool("Borrar", Icons.Default.Delete, vm::deleteSelection)
+                        Tool("Borrar", Icons.Default.Delete, onClick = vm::deleteSelection)
                     }
                     is Selection.Text -> {
-                        Tool("Editar", Icons.Default.Edit) { onEditText(sel.id) }
-                        Tool("Estilo", Icons.Default.FormatSize) { onPanel(Panel.TEXT_STYLE) }
+                        val layer = project.texts.firstOrNull { it.id == sel.id }
+                        if (layer?.isImage == true) {
+                            Tool("Tamaño", Icons.Default.FormatSize) { onPanel(Panel.IMAGE_STYLE) }
+                        } else {
+                            Tool("Editar", Icons.Default.Edit) { onEditText(sel.id) }
+                            Tool("Estilo", Icons.Default.FormatSize) { onPanel(Panel.TEXT_STYLE) }
+                        }
                         Tool("Posición", Icons.Default.OpenWith) { onPanel(Panel.TEXT_POSITION) }
                         Tool("Tiempo", Icons.Default.Timer) { onPanel(Panel.TEXT_TIME) }
-                        Tool("Dividir", Icons.Default.ContentCut, vm::splitAtPlayhead)
-                        Tool("Duplicar", Icons.Default.ContentCopy, vm::duplicateSelection)
-                        Tool("Borrar", Icons.Default.Delete, vm::deleteSelection)
+                        Tool("Animación", Icons.Default.Animation) { onPanel(Panel.LAYER_ANIM) }
+                        Tool("Dividir", Icons.Default.ContentCut, onClick = vm::splitAtPlayhead)
+                        Tool("Duplicar", Icons.Default.ContentCopy, onClick = vm::duplicateSelection)
+                        Tool("Borrar", Icons.Default.Delete, onClick = vm::deleteSelection)
                     }
                 }
             }
@@ -178,17 +214,25 @@ fun ToolArea(
 }
 
 @Composable
-private fun Tool(label: String, icon: ImageVector, onClick: () -> Unit) {
+private fun Tool(label: String, icon: ImageVector, tint: Color = Palette.OnSurface, onClick: () -> Unit) {
     Column(
         Modifier
-            .width(68.dp)
+            .width(70.dp)
             .clickable(onClick = onClick)
-            .padding(vertical = 6.dp),
+            .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(icon, null, Modifier.size(24.dp))
+        Box(
+            Modifier
+                .size(46.dp)
+                .background(Palette.SurfaceHigh, RoundedCornerShape(14.dp))
+                .border(1.dp, Palette.Outline, RoundedCornerShape(14.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, null, Modifier.size(24.dp), tint = tint)
+        }
         Spacer(Modifier.height(4.dp))
-        Text(label, fontSize = 11.sp, maxLines = 1)
+        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, color = Palette.OnSurface)
     }
 }
 
@@ -250,10 +294,6 @@ private fun PanelContent(panel: Panel, project: Project, selection: Selection, v
                         )
                     }
                 }
-                Text(
-                    "La vista previa reproduce a velocidad normal; la exportación aplica la velocidad.",
-                    fontSize = 10.sp, color = Palette.OnSurfaceMuted,
-                )
             }
         }
 
@@ -361,8 +401,112 @@ private fun PanelContent(panel: Panel, project: Project, selection: Selection, v
             )
         }
 
+        Panel.TRANSITION -> if (clip != null) {
+            Column {
+                Text(
+                    if (project.clips.firstOrNull()?.id == clip.id) "Entrada del vídeo desde un color"
+                    else "Entre el clip anterior y este",
+                    fontSize = 12.sp, color = Palette.OnSurfaceMuted,
+                )
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TransitionType.entries.forEach { t ->
+                        FilterChip(
+                            selected = clip.transition == t,
+                            onClick = { vm.updateClip(clip.id) { it.copy(transition = t) } },
+                            label = { Text(t.label) },
+                        )
+                    }
+                }
+                if (clip.transition != TransitionType.NONE) {
+                    LabeledSlider(
+                        label = "Duración",
+                        valueText = "%.1f s".format(clip.transitionMs / 1000f),
+                        value = clip.transitionMs.toFloat(),
+                        range = 200f..MAX_TRANSITION_MS.toFloat(),
+                        onChange = { v -> vm.updateClip(clip.id, live = true) { it.copy(transitionMs = v.toLong()) } },
+                        onDone = vm::commitLive,
+                    )
+                }
+            }
+        }
+
+        Panel.LAYER_ANIM -> if (text != null) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Entrada", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    LayerAnim.entries.filter { it != LayerAnim.TYPEWRITER || !text.isImage }.forEach { a ->
+                        FilterChip(
+                            selected = text.animIn == a,
+                            onClick = { vm.updateText(text.id) { it.copy(animIn = a) } },
+                            label = { Text(a.label) },
+                        )
+                    }
+                }
+                Text("Salida", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    LayerAnim.entries.filter { it != LayerAnim.TYPEWRITER }.forEach { a ->
+                        FilterChip(
+                            selected = text.animOut == a,
+                            onClick = { vm.updateText(text.id) { it.copy(animOut = a) } },
+                            label = { Text(a.label) },
+                        )
+                    }
+                }
+            }
+        }
+
+        Panel.IMAGE_STYLE -> if (text != null) {
+            Column {
+                LabeledSlider(
+                    label = "Tamaño",
+                    valueText = "${(text.scale * 100).roundToInt()} %",
+                    value = text.scale,
+                    range = 0.2f..3f,
+                    onChange = { v -> vm.updateText(text.id, live = true) { it.copy(scale = v) } },
+                    onDone = vm::commitLive,
+                )
+                LabeledSlider(
+                    label = "Opacidad",
+                    valueText = "${(text.opacity * 100).roundToInt()} %",
+                    value = text.opacity,
+                    range = 0f..1f,
+                    onChange = { v -> vm.updateText(text.id, live = true) { it.copy(opacity = v) } },
+                    onDone = vm::commitLive,
+                )
+                LabeledSlider(
+                    label = "Rotación",
+                    valueText = "${text.rotation.roundToInt()}°",
+                    value = text.rotation,
+                    range = -180f..180f,
+                    onChange = { v -> vm.updateText(text.id, live = true) { it.copy(rotation = v) } },
+                    onDone = vm::commitLive,
+                )
+            }
+        }
+
         Panel.TEXT_STYLE -> if (text != null) {
             Column(Modifier.padding(bottom = 4.dp)) {
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TextFont.entries.forEach { f ->
+                        FilterChip(
+                            selected = text.font == f,
+                            onClick = { vm.updateText(text.id) { it.copy(font = f) } },
+                            label = { Text(f.label) },
+                        )
+                    }
+                }
                 LabeledSlider(
                     label = "Tamaño",
                     valueText = "${(text.scale * 100).roundToInt()} %",
@@ -391,12 +535,54 @@ private fun PanelContent(panel: Panel, project: Project, selection: Selection, v
                     BackgroundColors.forEach { c ->
                         ColorDot(c, selected = text.backgroundArgb == c) { vm.updateText(text.id) { it.copy(backgroundArgb = c) } }
                     }
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Contorno", fontSize = 12.sp)
+                    OutlineColors.forEach { c ->
+                        ColorDot(c, selected = text.outlineArgb == c) { vm.updateText(text.id) { it.copy(outlineArgb = c) } }
+                    }
+                }
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     FilterChip(
                         selected = text.bold,
                         onClick = { vm.updateText(text.id) { it.copy(bold = !it.bold) } },
                         label = { Text("Negrita", fontWeight = FontWeight.Bold) },
                     )
+                    FilterChip(
+                        selected = text.italic,
+                        onClick = { vm.updateText(text.id) { it.copy(italic = !it.italic) } },
+                        label = { Text("Cursiva") },
+                    )
+                    FilterChip(
+                        selected = text.shadow,
+                        onClick = { vm.updateText(text.id) { it.copy(shadow = !it.shadow) } },
+                        label = { Text("Sombra") },
+                    )
                 }
+                LabeledSlider(
+                    label = "Opacidad",
+                    valueText = "${(text.opacity * 100).roundToInt()} %",
+                    value = text.opacity,
+                    range = 0f..1f,
+                    onChange = { v -> vm.updateText(text.id, live = true) { it.copy(opacity = v) } },
+                    onDone = vm::commitLive,
+                )
+                LabeledSlider(
+                    label = "Rotación",
+                    valueText = "${text.rotation.roundToInt()}°",
+                    value = text.rotation,
+                    range = -180f..180f,
+                    onChange = { v -> vm.updateText(text.id, live = true) { it.copy(rotation = v) } },
+                    onDone = vm::commitLive,
+                )
             }
         }
 
@@ -524,7 +710,7 @@ private fun ColorDot(argb: Long, selected: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             .size(28.dp)
-            .border(if (selected) 3.dp else 1.dp, if (selected) Palette.Coral else Palette.OnSurfaceMuted, CircleShape)
+            .border(if (selected) 3.dp else 1.5.dp, if (selected) Palette.Coral else Palette.OnSurfaceMuted, CircleShape)
             .padding(3.dp)
             .background(if (argb ushr 24 == 0L) Palette.Surface else color, CircleShape)
             .clickable(onClick = onClick),
@@ -536,6 +722,9 @@ private fun ColorDot(argb: Long, selected: Boolean, onClick: () -> Unit) {
 
 private val TextColors = listOf(
     0xFFFFFFFF, 0xFF000000, 0xFFFF6B4A, 0xFFFFC94A, 0xFF7C6CFF, 0xFF3DD6C6, 0xFFFF4D8D, 0xFF5BE37D,
+)
+private val OutlineColors = listOf(
+    0x00000000L, 0xFF000000, 0xFFFFFFFF, 0xFFFF7A59, 0xFFFFD166, 0xFF9B8CFF,
 )
 private val BackgroundColors = listOf(
     0x00000000L, 0xCC000000, 0xCCFFFFFF, 0xFFFF6B4A, 0xFFFFC94A, 0xFF7C6CFF,

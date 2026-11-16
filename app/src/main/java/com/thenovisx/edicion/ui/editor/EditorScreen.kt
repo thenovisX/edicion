@@ -2,6 +2,7 @@ package com.thenovisx.edicion.ui.editor
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.view.ViewGroup
 import android.widget.Toast
@@ -23,12 +24,17 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
@@ -37,7 +43,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -59,6 +64,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -66,6 +72,7 @@ import androidx.media3.ui.PlayerView
 import com.thenovisx.edicion.core.formatTime
 import com.thenovisx.edicion.media.ExportOptions
 import com.thenovisx.edicion.ui.theme.Palette
+import kotlinx.coroutines.delay
 
 @Composable
 fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
@@ -86,6 +93,16 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
     }
     val pickAudio = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.importAudio(uri)
+    }
+    val pickLayerImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) vm.addImageLayer(uri)
+    }
+    var showStickers by remember { mutableStateOf(false) }
+    val recording by vm.recording.collectAsState()
+    var showVoice by remember { mutableStateOf(false) }
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) showVoice = true
+        else Toast.makeText(context, "Se necesita permiso de micrófono para grabar la voz", Toast.LENGTH_LONG).show()
     }
     var pendingExport by remember { mutableStateOf<ExportOptions?>(null) }
     val storagePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -120,14 +137,15 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
     ) {
         // Barra superior
         Row(
-            Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 4.dp),
+            Modifier.fillMaxWidth().background(Palette.Surface).height(56.dp).padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") }
             Text(
                 project?.name ?: "",
                 modifier = Modifier.weight(1f).clickable { showRename = true },
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -202,25 +220,32 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
 
         // Transporte
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            Modifier.fillMaxWidth().background(Palette.Surface).padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 "${formatTime(state.playheadMs)} / ${formatTime(project?.durationMs ?: 0)}",
-                fontSize = 12.sp,
-                color = Palette.OnSurfaceMuted,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Palette.OnSurface,
                 modifier = Modifier.weight(1f),
             )
             IconButton(
                 onClick = vm::togglePlay,
                 enabled = player != null,
-                modifier = Modifier.size(44.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                modifier = Modifier.size(48.dp).background(if (player != null) Color.White else Palette.SurfaceHigh, CircleShape),
             ) {
-                Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (isPlaying) "Pausa" else "Reproducir")
+                Icon(
+                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    if (isPlaying) "Pausa" else "Reproducir",
+                    tint = Color.Black,
+                    modifier = Modifier.size(30.dp),
+                )
             }
             Text(
                 project?.aspectRatio?.label ?: "",
-                fontSize = 12.sp,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
                 color = Palette.OnSurfaceMuted,
                 modifier = Modifier.weight(1f).padding(start = 8.dp),
                 textAlign = androidx.compose.ui.text.style.TextAlign.End,
@@ -249,11 +274,40 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
                 onAddAudio = { pickAudio.launch(arrayOf("audio/*")) },
                 onAddText = { textDialog = TextDialogMode.Add },
                 onEditText = { id -> textDialog = TextDialogMode.Edit(id) },
+                onAddSticker = { showStickers = true },
+                onAddImageLayer = {
+                    pickLayerImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                },
+                onVoice = {
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        showVoice = true
+                    } else {
+                        micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                },
             )
         }
     }
 
     // ---------- Diálogos ----------
+
+    if (showStickers) {
+        StickerDialog(
+            onDismiss = { showStickers = false },
+            onPick = { vm.addSticker(it); showStickers = false },
+        )
+    }
+
+    if (showVoice) {
+        VoiceDialog(
+            recording = recording,
+            elapsedMs = { vm.recordingElapsedMs },
+            startAt = formatTime(state.playheadMs),
+            onStart = vm::startVoice,
+            onStop = { vm.stopVoice(keep = true); showVoice = false },
+            onCancel = { vm.stopVoice(keep = false); showVoice = false },
+        )
+    }
 
     textDialog?.let { mode ->
         val initial = (mode as? TextDialogMode.Edit)?.let { m -> project?.texts?.firstOrNull { it.id == m.id }?.text } ?: ""
@@ -402,5 +456,82 @@ private fun ExportOptionsDialog(onDismiss: () -> Unit, onExport: (ExportOptions)
         },
         confirmButton = { TextButton(onClick = { onExport(ExportOptions(selected)) }) { Text("Exportar") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
+}
+
+private val Stickers = listOf(
+    "😀", "😂", "😍", "🥳", "😎", "🤩", "😭", "😡", "🤯", "😴", "🤔", "🙌",
+    "👍", "👏", "🙏", "💪", "👀", "💯", "🔥", "✨", "⭐", "❤️", "💔", "💥",
+    "🎉", "🎂", "🎁", "🎵", "🎬", "📸", "🏆", "⚽", "🌈", "☀️", "🌙", "⚡",
+    "🌸", "🍕", "☕", "🐶", "🐱", "🚀", "✈️", "🏖️", "📍", "➡️", "⬇️", "✅",
+)
+
+@Composable
+private fun StickerDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Stickers") },
+        text = {
+            LazyVerticalGrid(columns = GridCells.Fixed(6), modifier = Modifier.height(280.dp)) {
+                items(Stickers) { e ->
+                    Box(
+                        Modifier.aspectRatio(1f).clickable { onPick(e) },
+                        contentAlignment = Alignment.Center,
+                    ) { Text(e, fontSize = 28.sp) }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } },
+    )
+}
+
+@Composable
+private fun VoiceDialog(
+    recording: Boolean,
+    elapsedMs: () -> Long,
+    startAt: String,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    var elapsed by remember { mutableStateOf(0L) }
+    LaunchedEffect(recording) {
+        while (recording) {
+            elapsed = elapsedMs()
+            delay(100)
+        }
+    }
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text("Voz en off") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    if (recording) formatTime(elapsed) else "La grabación se colocará en $startAt",
+                    fontSize = if (recording) 34.sp else 14.sp,
+                    fontWeight = if (recording) FontWeight.Bold else FontWeight.Normal,
+                    color = if (recording) Palette.Coral else Palette.OnSurfaceMuted,
+                )
+                IconButton(
+                    onClick = { if (recording) onStop() else onStart() },
+                    modifier = Modifier.padding(top = 16.dp).size(72.dp).background(Palette.Coral, CircleShape),
+                ) {
+                    Icon(
+                        if (recording) Icons.Default.Stop else Icons.Default.Mic,
+                        if (recording) "Detener y guardar" else "Grabar",
+                        tint = Color.Black,
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
+                Text(
+                    if (recording) "Toca para terminar y añadirla" else "Toca para empezar a grabar",
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onCancel) { Text(if (recording) "Descartar" else "Cerrar") } },
     )
 }

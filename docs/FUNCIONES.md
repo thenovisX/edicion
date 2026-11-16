@@ -10,7 +10,7 @@ saber qué funciones espera hoy un creador de un editor móvil.
 
 Leyenda de estado:
 
-- ✅ Hecho (etapa 1, en este repositorio)
+- ✅ Hecho (en este repositorio)
 - 🟡 Parcial
 - 🔜 Planificado (etapa indicada)
 - 🧪 Requiere IA / modelo en el dispositivo o servicio externo
@@ -75,7 +75,8 @@ Lanzada en abril de 2025, gratuita, sin marca de agua, solo móvil.
 | Guardado automático del proyecto (JSON local) | ✅ |
 | Formatos de lienzo 9:16, 16:9, 1:1, 4:5, 3:4 | ✅ |
 | Deshacer / rehacer | ✅ |
-| Duplicar proyecto, carpetas | 🔜 Etapa 2 |
+| Duplicar proyecto | ✅ |
+| Carpetas de proyectos | 🔜 Etapa 5 |
 | Plantillas propias | 🔜 Etapa 5 |
 | Storyboard / notas de ideas | 🔜 Etapa 5 |
 
@@ -85,22 +86,25 @@ Lanzada en abril de 2025, gratuita, sin marca de agua, solo móvil.
 | Importar vídeos y fotos (selector de fotos de Android) | ✅ |
 | Importar audio desde archivos | ✅ |
 | Cámara propia con teleprompter | 🔜 Etapa 4 |
-| Grabar voz en off desde la app | 🔜 Etapa 2 |
+| Grabar voz en off desde la app | ✅ |
 
 ### 2.3 Línea de tiempo y edición básica
 | Función | Estado |
 |---|---|
 | Pista principal de vídeo/fotos | ✅ |
 | Pista de música/audio con huecos (empieza en cualquier momento) | ✅ |
-| Pista de textos | ✅ |
+| Pista de capas: textos, stickers e imágenes superpuestas | ✅ |
+| Pista de voz independiente de la música | ✅ |
 | Dividir en el cabezal | ✅ |
 | Recortar inicio/fin | ✅ |
 | Reordenar, duplicar, borrar clips | ✅ |
 | Duración de fotos | ✅ |
 | Zoom de la línea de tiempo con pellizco | ✅ |
 | Arrastrar para moverse por el tiempo | ✅ |
-| Superposición de vídeo/imagen (PiP) y pistas ilimitadas | 🔜 Etapa 3 |
-| Transiciones entre clips | 🔜 Etapa 2 |
+| Superposición de imagen (logo, foto) con tamaño, opacidad y rotación | ✅ |
+| Superposición de vídeo (PiP) y pistas ilimitadas | 🔜 Etapa 3 |
+| Transiciones: fundido a negro y a blanco con duración | ✅ |
+| Transiciones: disolución cruzada, deslizar, zoom, desenfoque | 🔜 Etapa 3 |
 | Congelar fotograma, invertir clip | 🔜 Etapa 3 |
 | Marcadores de ritmo | 🔜 Etapa 3 |
 | Fotogramas clave (posición, escala, rotación, opacidad, volumen) | 🔜 Etapa 3 |
@@ -108,7 +112,7 @@ Lanzada en abril de 2025, gratuita, sin marca de agua, solo móvil.
 ### 2.4 Velocidad
 | Función | Estado |
 |---|---|
-| Velocidad por clip 0,25×–4× | ✅ |
+| Velocidad por clip 0,25×–4× (también en la vista previa) | ✅ |
 | Curvas de velocidad (speed ramp) | 🔜 Etapa 3 |
 
 ### 2.5 Color, filtros y efectos (vídeo)
@@ -129,8 +133,12 @@ Lanzada en abril de 2025, gratuita, sin marca de agua, solo móvil.
 | Función | Estado |
 |---|---|
 | Textos con inicio/fin, posición, tamaño, color, fondo, negrita | ✅ |
-| Fuentes, contorno, sombra, animaciones de entrada/salida | 🔜 Etapa 2 |
-| Stickers y emojis | 🔜 Etapa 2 |
+| 6 tipos de letra, cursiva, contorno, sombra, opacidad y rotación | ✅ |
+| Animaciones de entrada/salida: fundido, deslizar, zoom, máquina de escribir | ✅ |
+| Stickers (emojis) | ✅ |
+| Mover y escalar capas con los dedos sobre la vista previa | 🔜 Etapa 3 |
+| Plantillas de texto, estilo por palabra, fuentes descargables | 🔜 Etapa 3 |
+| Stickers animados y GIF | 🔜 Etapa 3 |
 | Subtítulos automáticos (voz a texto en el dispositivo) | 🧪 Etapa 4 |
 | Texto a voz | 🧪 Etapa 4 |
 
@@ -178,11 +186,12 @@ Lanzada en abril de 2025, gratuita, sin marca de agua, solo móvil.
 
 ## 3. Etapas
 
-1. **Base del editor (esta entrega):** proyectos, importación, línea de tiempo con
+1. **Base del editor (hecha):** proyectos, importación, línea de tiempo con
    vídeo/foto, música y texto, recorte, división, velocidad, volumen, filtros,
    ajustes, rotación, exportación MP4 y editor de fotos.
-2. **Pulido creativo:** transiciones, animaciones y fuentes de texto, stickers,
-   fundidos de audio, voz en off, más ajustes de color, editor de audio.
+2. **Pulido creativo (en curso):** hechas las transiciones por fundido, fuentes y
+   animaciones de texto, stickers, capas de imagen y voz en off. Quedan fundidos de audio,
+   más ajustes de color y el editor de audio.
 3. **Multipista avanzada:** superposiciones (PiP), fotogramas clave, curvas de
    velocidad, croma, máscaras, efectos, congelar e invertir.
 4. **IA en el dispositivo y cámara:** subtítulos automáticos, quitar fondo,
@@ -190,7 +199,50 @@ Lanzada en abril de 2025, gratuita, sin marca de agua, solo móvil.
 5. **Contenido y automatización:** plantillas, biblioteca de sonidos, montaje
    automático, storyboard.
 
-## 4. Fuentes consultadas
+## 4. Lo que aún falta respecto a las apps de referencia
+
+Lista completa de lo pendiente, agrupada por la etapa en la que está previsto.
+
+**Etapa 2 (resto)**
+- Fundido de entrada/salida de audio y volumen con puntos (ducking de la música bajo la voz).
+- Extraer el audio de un vídeo a su propia pista.
+- Editor de audio independiente (cortar, unir y exportar M4A).
+- Vídeo: viñeta, grano, nitidez, desenfoque, altas luces/sombras, curvas y HSL por color.
+- Presets de color guardables y carga de LUT.
+- Fondo del lienzo: color, desenfocado o imagen; zoom y encuadre del clip dentro del lienzo.
+- Exportación: elegir fps y bitrate, HEVC, solo audio.
+- Foto: altas luces/sombras, curvas, HSL, viñeta, nitidez, grano, recorte libre y enderezado.
+
+**Etapa 3**
+- Superposición de vídeo (PiP), pistas ilimitadas, modos de fusión y máscaras.
+- Fotogramas clave (posición, escala, rotación, opacidad, volumen).
+- Curvas de velocidad, congelar fotograma, reproducir al revés.
+- Croma (pantalla verde).
+- Más transiciones (disolución, deslizar, zoom, desenfoque) y efectos (glitch, sacudida, destellos).
+- Mover capas con los dedos, plantillas de texto, stickers animados.
+- Marcadores de ritmo y forma de onda en las pistas de audio.
+- Foto: texto y stickers, collage, marcos y bordes.
+- Exportar GIF.
+
+**Etapa 4 (IA en el dispositivo y cámara)**
+- Subtítulos automáticos (voz a texto) y subtítulos animados; traducción de subtítulos.
+- Texto a voz.
+- Quitar fondo / recorte de sujeto en vídeo y foto; borrar objetos; retoque de piel.
+- Seguimiento de objetos y reencuadre automático por formato.
+- Estabilización.
+- Audio: reducción de ruido, mejora de voz, efectos de voz, ecualizador, eliminar silencios, aislar voz.
+- Cámara propia con teleprompter, zonas seguras y grabación por tomas.
+
+**Etapa 5 (contenido y automatización)**
+- Plantillas propias y proyectos de ejemplo.
+- Biblioteca de música y efectos de sonido libres de derechos.
+- Montaje automático con música, storyboard y notas de ideas.
+- Carpetas de proyectos, copia de seguridad y exportar/importar proyecto.
+- Funciones generativas (estilos, expansión de fondo, efectos de sonido por texto, doblaje,
+  clonación de voz, avatares): requieren un servicio externo de IA.
+- Publicación directa en redes y estadísticas: dependen de las API de cada red.
+
+## 5. Fuentes consultadas
 
 - https://www.inro.social/blog/edits-new-meta-app
 - https://napoleoncat.com/blog/instagram-edits/

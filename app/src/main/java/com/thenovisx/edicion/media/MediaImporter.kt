@@ -66,6 +66,26 @@ class MediaImporter(private val context: Context) {
         )
     }
 
+    /** Convierte una grabación de voz en un clip de la pista de voz. */
+    suspend fun importVoice(file: java.io.File, name: String): AudioClip? = withContext(Dispatchers.IO) {
+        val uri = Uri.fromFile(file)
+        val info = probe(uri) ?: return@withContext null
+        AudioClip(
+            id = newId(),
+            uri = uri.toString(),
+            name = name,
+            sourceDurationMs = info.durationMs,
+            lane = com.thenovisx.edicion.core.LANE_VOICE,
+        )
+    }
+
+    /** Prepara una imagen para usarla como capa superpuesta. Devuelve su nombre, o null si no es legible. */
+    suspend fun prepareImageLayer(uri: Uri): String? = withContext(Dispatchers.IO) {
+        persist(uri)
+        val (w, h) = imageSize(uri)
+        if (w <= 0 || h <= 0) null else displayName(uri).ifEmpty { "Imagen" }
+    }
+
     /** Conserva el permiso de lectura para poder abrir el proyecto más tarde. */
     private fun persist(uri: Uri) {
         runCatching {

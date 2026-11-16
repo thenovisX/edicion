@@ -10,14 +10,14 @@ import java.io.RandomAccessFile
  * con silencio real recortado a la duración necesaria.)
  */
 object Silence {
-    const val DURATION_MS = 10 * 60 * 1000L
-    private const val SAMPLE_RATE = 8_000
-    private const val CHANNELS = 1
+    const val DURATION_MS = 60 * 1000L
+    private const val SAMPLE_RATE = 44_100
+    private const val CHANNELS = 2
     private const val BITS = 16
 
     @Synchronized
     fun file(context: Context): File {
-        val f = File(context.cacheDir, "silencio_v1.wav")
+        val f = File(context.cacheDir, "silencio_v2.wav")
         val dataBytes = SAMPLE_RATE.toLong() * CHANNELS * (BITS / 8) * (DURATION_MS / 1000)
         if (f.exists() && f.length() == dataBytes + 44) return f
         RandomAccessFile(f, "rw").use { raf ->

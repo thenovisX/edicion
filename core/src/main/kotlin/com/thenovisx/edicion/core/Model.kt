@@ -48,6 +48,38 @@ enum class FilterPreset(val label: String) {
     INVERT("Negativo"),
 }
 
+/** Transición al inicio de un clip (desde el clip anterior, o desde negro si es el primero). */
+@Serializable
+enum class TransitionType(val label: String) {
+    NONE("Ninguna"),
+    FADE_BLACK("Fundido a negro"),
+    FADE_WHITE("Fundido a blanco"),
+}
+
+/** Tipos de letra disponibles (familias incluidas en Android). */
+@Serializable
+enum class TextFont(val label: String) {
+    SANS("Normal"),
+    SERIF("Serif"),
+    MONO("Mono"),
+    CONDENSED("Condensada"),
+    CURSIVE("Manuscrita"),
+    ROUNDED("Casual"),
+}
+
+/** Animaciones de entrada y salida de una capa. */
+@Serializable
+enum class LayerAnim(val label: String) {
+    NONE("Ninguna"),
+    FADE("Fundido"),
+    SLIDE_UP("Deslizar arriba"),
+    SLIDE_DOWN("Deslizar abajo"),
+    SLIDE_LEFT("Deslizar izquierda"),
+    SLIDE_RIGHT("Deslizar derecha"),
+    POP("Zoom"),
+    TYPEWRITER("Máquina de escribir"),
+}
+
 /**
  * Ajustes de color normalizados. Todos los valores van de -1 a 1 y 0 es neutro.
  */
@@ -88,6 +120,8 @@ data class Clip(
     val flipHorizontal: Boolean = false,
     val width: Int = 0,
     val height: Int = 0,
+    val transition: TransitionType = TransitionType.NONE,
+    val transitionMs: Long = DEFAULT_TRANSITION_MS,
 ) {
     /** Duración del fragmento recortado, sin aplicar velocidad. */
     val trimmedDurationMs: Long get() = (trimEndMs - trimStartMs).coerceAtLeast(0)
@@ -112,12 +146,16 @@ data class AudioClip(
     /** Posición de inicio en la línea de tiempo. */
     val startMs: Long = 0,
     val volume: Float = 1f,
+    /** Pista de audio: [LANE_MUSIC] o [LANE_VOICE]. Los clips de una misma pista no se solapan. */
+    val lane: Int = LANE_MUSIC,
 ) {
     val durationMs: Long get() = (trimEndMs - trimStartMs).coerceAtLeast(0)
     val endMs: Long get() = startMs + durationMs
 }
 
-/** Capa de texto superpuesta al vídeo. */
+/**
+ * Capa superpuesta al vídeo: texto, sticker (emoji) o imagen (si [imageUri] no es nulo).
+ */
 @Serializable
 data class TextLayer(
     val id: String,
@@ -132,7 +170,20 @@ data class TextLayer(
     val colorArgb: Long = 0xFFFFFFFF,
     val backgroundArgb: Long = 0x00000000,
     val bold: Boolean = true,
+    val italic: Boolean = false,
+    val font: TextFont = TextFont.SANS,
+    /** Color del contorno; alfa 0 = sin contorno. */
+    val outlineArgb: Long = 0x00000000,
+    val shadow: Boolean = false,
+    val opacity: Float = 1f,
+    val rotation: Float = 0f,
+    val animIn: LayerAnim = LayerAnim.NONE,
+    val animOut: LayerAnim = LayerAnim.NONE,
+    /** Si no es nulo, la capa es una imagen y [text] solo sirve de etiqueta. */
+    val imageUri: String? = null,
+    val isSticker: Boolean = false,
 ) {
+    val isImage: Boolean get() = imageUri != null
     val durationMs: Long get() = (endMs - startMs).coerceAtLeast(0)
     fun isVisibleAt(timeMs: Long) = timeMs in startMs until endMs
 }
@@ -159,3 +210,8 @@ data class Project(
 const val DEFAULT_IMAGE_DURATION_MS = 3_000L
 const val MAX_IMAGE_DURATION_MS = 60_000L
 const val MIN_CLIP_DURATION_MS = 100L
+const val DEFAULT_TRANSITION_MS = 600L
+const val MAX_TRANSITION_MS = 2_000L
+const val LAYER_ANIM_MS = 400L
+const val LANE_MUSIC = 0
+const val LANE_VOICE = 1

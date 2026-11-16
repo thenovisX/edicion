@@ -44,7 +44,7 @@ fun FilterSwatch(preset: FilterPreset, selected: Boolean, onClick: () -> Unit) {
             Modifier
                 .size(56.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .border(if (selected) 2.dp else 0.dp, if (selected) Palette.Coral else Color.Transparent, RoundedCornerShape(10.dp))
+                .border(if (selected) 3.dp else 1.dp, if (selected) Palette.Coral else Palette.Outline, RoundedCornerShape(10.dp))
         ) {
             // Cielo, sol y suelo: suficiente para apreciar el carácter de cada filtro.
             drawRect(
@@ -58,6 +58,11 @@ fun FilterSwatch(preset: FilterPreset, selected: Boolean, onClick: () -> Unit) {
                 colorFilter = filter,
             )
         }
-        Text(preset.label, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+        Text(
+            preset.label,
+            fontSize = 11.sp,
+            color = if (selected) Palette.Coral else Palette.OnSurface,
+            modifier = Modifier.padding(top = 3.dp),
+        )
     }
 }

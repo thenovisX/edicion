@@ -121,6 +121,7 @@ object Timeline {
             volume = c.volume.coerceIn(0f, 2f),
             filterIntensity = c.filterIntensity.coerceIn(0f, 1f),
             rotation = ((c.rotation % 360) + 360) % 360,
+            transitionMs = c.transitionMs.coerceIn(200, MAX_TRANSITION_MS),
         )
     }
 
@@ -128,7 +129,7 @@ object Timeline {
 
     /** Añade un audio en [startMs] (por defecto al final de la pista de audio). */
     fun addAudio(project: Project, clip: AudioClip, startMs: Long? = null): Project {
-        val start = startMs ?: (project.audio.maxOfOrNull { it.endMs } ?: 0L)
+        val start = startMs ?: (project.audio.filter { it.lane == clip.lane }.maxOfOrNull { it.endMs } ?: 0L)
         return project.copy(audio = resolveAudioOverlaps(project.audio + clip.copy(startMs = start), clip.id))
     }
 
@@ -147,8 +148,8 @@ object Timeline {
     fun removeAudio(project: Project, id: String): Project =
         project.copy(audio = project.audio.filterNot { it.id == id })
 
-    fun splitAudioAt(project: Project, timeMs: Long, newId: String): Pair<Project, String?> {
-        val a = project.audio.firstOrNull { timeMs > it.startMs + MIN_CLIP_DURATION_MS && timeMs < it.endMs - MIN_CLIP_DURATION_MS }
+    fun splitAudioAt(project: Project, timeMs: Long, newId: String, preferId: String? = null): Pair<Project, String?> {
+        val a = project.audio.sortedBy { if (it.id == preferId) 0 else 1 }.firstOrNull { timeMs > it.startMs + MIN_CLIP_DURATION_MS && timeMs < it.endMs - MIN_CLIP_DURATION_MS }
             ?: return project to null
         val cut = a.trimStartMs + (timeMs - a.startMs)
         val first = a.copy(trimEndMs = cut)
@@ -161,17 +162,57 @@ object Timeline {
      * La pista de audio es secuencial: los clips no se solapan. El clip [priorityId] conserva su
      * posición y los demás se desplazan hacia la derecha si hace falta.
      */
-    fun resolveAudioOverlaps(list: List<AudioClip>, priorityId: String? = null): List<AudioClip> {
-        val sorted = list.sortedWith(compareBy<AudioClip> { it.startMs }.thenBy { if (it.id == priorityId) 0 else 1 })
-        val out = ArrayList<AudioClip>(sorted.size)
-        var cursor = 0L
-        for (a in sorted) {
-            val start = maxOf(a.startMs, cursor)
-            val placed = a.copy(startMs = start)
-            out += placed
-            cursor = placed.endMs
+    fun resolveAudioOverlaps(list: List<AudioClip>, priorityId: String? = null): List<AudioClip> =
+        list.groupBy { it.lane }.toSortedMap().values.flatMap { lane ->
+            val sorted = lane.sortedWith(compareBy<AudioClip> { it.startMs }.thenBy { if (it.id == priorityId) 0 else 1 })
+            val out = ArrayList<AudioClip>(sorted.size)
+            var cursor = 0L
+            for (a in sorted) {
+                val placed = a.copy(startMs = maxOf(a.startMs, cursor))
+                out += placed
+                cursor = placed.endMs
+            }
+            out
         }
-        return out
+
+    // ---------- Transiciones ----------
+
+    /** Fundido activo en un instante: color (negro o blanco) y cantidad 0..1. */
+    data class Fade(val white: Boolean, val amount: Float)
+
+    /**
+     * Calcula el fundido de transición en [timeMs]. La transición de un clip se reparte a
+     * partes iguales entre el final del clip anterior y el inicio del propio clip; en el
+     * primer clip solo hay fundido de entrada.
+     */
+    fun fadeAt(project: Project, timeMs: Long): Fade? = fadeAt(transitionCuts(project), timeMs)
+
+    data class Cut(val timeMs: Long, val beforeMs: Long, val afterMs: Long, val white: Boolean)
+
+    fun transitionCuts(project: Project): List<Cut> {
+        val cuts = ArrayList<Cut>()
+        var t = 0L
+        project.clips.forEachIndexed { i, c ->
+            if (c.transition != TransitionType.NONE) {
+                val half = c.transitionMs / 2
+                val prev = project.clips.getOrNull(i - 1)
+                // Ningún fundido ocupa más de la mitad de un clip.
+                val before = if (prev == null) 0L else minOf(half, prev.durationMs / 2)
+                val after = minOf(if (prev == null) c.transitionMs else half, c.durationMs / 2)
+                cuts += Cut(t, before, after, c.transition == TransitionType.FADE_WHITE)
+            }
+            t += c.durationMs
+        }
+        return cuts
+    }
+
+    fun fadeAt(cuts: List<Cut>, timeMs: Long): Fade? {
+        for (cut in cuts) {
+            val d = timeMs - cut.timeMs
+            if (d < 0 && -d < cut.beforeMs) return Fade(cut.white, 1f - (-d).toFloat() / cut.beforeMs)
+            if (d >= 0 && d < cut.afterMs) return Fade(cut.white, 1f - d.toFloat() / cut.afterMs)
+        }
+        return null
     }
 
     // ---------- Texto ----------
@@ -198,6 +239,7 @@ object Timeline {
                 x = t.x.coerceIn(-1f, 1f),
                 y = t.y.coerceIn(-1f, 1f),
                 scale = t.scale.coerceIn(0.2f, 5f),
+                opacity = t.opacity.coerceIn(0f, 1f),
             )
         })
     }

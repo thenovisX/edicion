@@ -8,6 +8,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -125,7 +126,7 @@ fun HomeScreen(
                     fontSize = 30.sp,
                     fontWeight = FontWeight.Black,
                 )
-                Text("Edita vídeo, foto y audio desde el móvil", color = Palette.OnSurfaceMuted, fontSize = 14.sp)
+                Text("Edita vídeo, foto y audio desde el móvil", color = Palette.OnSurfaceMuted, fontSize = 15.sp)
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -151,7 +152,8 @@ fun HomeScreen(
         item(span = { GridItemSpan(maxLineSpan) }) {
             Text(
                 if (projects.isEmpty()) "Aún no tienes proyectos" else "Proyectos",
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
                 modifier = Modifier.padding(top = 8.dp),
             )
         }
@@ -214,7 +216,7 @@ private fun BigAction(
     ) {
         Icon(icon, null, tint = Color.Black, modifier = Modifier.size(30.dp))
         Text(title, color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 17.sp, modifier = Modifier.padding(top = 18.dp))
-        Text(subtitle, color = Color.Black.copy(alpha = 0.7f), fontSize = 12.sp)
+        Text(subtitle, color = Color.Black.copy(alpha = 0.85f), fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -237,6 +239,7 @@ private fun ProjectCard(
         Modifier
             .clip(RoundedCornerShape(14.dp))
             .background(Palette.Surface)
+            .border(1.dp, Palette.Outline, RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(1f).background(Palette.SurfaceHigh), contentAlignment = Alignment.Center) {
