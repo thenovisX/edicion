@@ -34,8 +34,7 @@ Instálalo en el móvil (hay que permitir "instalar apps desconocidas").
 - `app/`: app Android con Jetpack Compose y Media3 (CompositionPlayer para la vista previa
   y Transformer para exportar).
 
-Requisitos para compilar en local: JDK 17 y Android SDK 35. Sin SDK se puede probar solo
-`core` con `./gradlew -PsoloCore=true :core:test`.
+Requisitos para compilar en local: JDK 17 y Android SDK 35.
 
 ## Limitaciones conocidas
 
