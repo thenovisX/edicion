@@ -21,21 +21,33 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.thenovisx.edicion.core.Adjustments
-import com.thenovisx.edicion.core.ColorMath
+import com.thenovisx.edicion.core.ColorPipeline
 import com.thenovisx.edicion.core.FilterPreset
 import com.thenovisx.edicion.ui.theme.Palette
 
-/** Convierte un filtro + ajustes en un ColorFilter de Compose. */
-fun colorFilterFor(filter: FilterPreset, intensity: Float, adjustments: Adjustments): ColorFilter? {
-    val m = ColorMath.combined(filter, intensity, adjustments)
-    if (m.isIdentity) return null
-    return ColorFilter.colorMatrix(ColorMatrix(m.toAndroid4x5()))
+/**
+ * Convierte la parte lineal de un filtro + ajustes en un ColorFilter de Compose.
+ * Devuelve null si no hay cambio. Los pasos no lineales necesitan [ColorPipeline].
+ */
+fun colorFilterFor(pipeline: ColorPipeline): ColorFilter? {
+    if (pipeline.matrix.isIdentity) return null
+    return ColorFilter.colorMatrix(ColorMatrix(pipeline.matrix.toAndroid4x5()))
+}
+
+private fun ColorPipeline.color(r: Int, g: Int, b: Int): Color {
+    val rgb = floatArrayOf(r / 255f, g / 255f, b / 255f)
+    apply(rgb)
+    return Color(rgb[0], rgb[1], rgb[2])
 }
 
 /** Muestra de un filtro: una pequeña escena de colores con el filtro aplicado. */
 @Composable
 fun FilterSwatch(preset: FilterPreset, selected: Boolean, onClick: () -> Unit) {
-    val filter = remember(preset) { colorFilterFor(preset, 1f, Adjustments()) }
+    // Cielo, sol, piel y suelo: suficiente para apreciar el carácter de cada filtro.
+    val colors = remember(preset) {
+        val p = ColorPipeline(preset, 1f, Adjustments())
+        listOf(p.color(0x4F, 0xA3, 0xE0), p.color(0xF5, 0xB9, 0x71), p.color(0xFF, 0xE0, 0x8A), p.color(0x3E, 0x8E, 0x4E), p.color(0xE8, 0xA6, 0x8A))
+    }
     Column(
         Modifier.clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -46,17 +58,10 @@ fun FilterSwatch(preset: FilterPreset, selected: Boolean, onClick: () -> Unit) {
                 .clip(RoundedCornerShape(10.dp))
                 .border(if (selected) 3.dp else 1.dp, if (selected) Palette.Coral else Palette.Outline, RoundedCornerShape(10.dp))
         ) {
-            // Cielo, sol y suelo: suficiente para apreciar el carácter de cada filtro.
-            drawRect(
-                Brush.verticalGradient(listOf(Color(0xFF4FA3E0), Color(0xFFF5B971))),
-                colorFilter = filter,
-            )
-            drawCircle(Color(0xFFFFE08A), radius = size.minDimension * 0.16f, center = Offset(size.width * 0.7f, size.height * 0.35f), colorFilter = filter)
-            drawRect(
-                Color(0xFF3E8E4E),
-                topLeft = Offset(0f, size.height * 0.68f),
-                colorFilter = filter,
-            )
+            drawRect(Brush.verticalGradient(listOf(colors[0], colors[1])))
+            drawCircle(colors[2], radius = size.minDimension * 0.16f, center = Offset(size.width * 0.7f, size.height * 0.35f))
+            drawRect(colors[3], topLeft = Offset(0f, size.height * 0.68f))
+            drawCircle(colors[4], radius = size.minDimension * 0.14f, center = Offset(size.width * 0.3f, size.height * 0.62f))
         }
         Text(
             preset.label,

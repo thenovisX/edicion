@@ -254,3 +254,71 @@ class LayersTest {
         assertNull(LayerMath.typewriterChars(t, 700))
     }
 }
+
+class ColorGradeTest {
+    private fun apply(p: ColorPipeline, r: Float, g: Float, b: Float) = floatArrayOf(r, g, b).also { p.apply(it) }
+
+    @Test
+    fun neutralPipelineIsIdentity() {
+        val p = ColorPipeline(FilterPreset.NONE, 1f, Adjustments())
+        assertTrue(p.isIdentity)
+        val c = apply(p, 0.2f, 0.5f, 0.8f)
+        assertEquals(0.2f, c[0], 1e-4f); assertEquals(0.5f, c[1], 1e-4f); assertEquals(0.8f, c[2], 1e-4f)
+        val cube = p.buildCube(5)
+        assertEquals(0xFF000000.toInt(), cube[0][0][0])
+        assertEquals(0xFFFFFFFF.toInt(), cube[4][4][4])
+        assertEquals(0xFFFF0000.toInt(), cube[4][0][0])
+        assertEquals(0xFF0000FF.toInt(), cube[0][0][4])
+    }
+
+    @Test
+    fun exposureAndShadows() {
+        val brighter = apply(ColorPipeline(FilterPreset.NONE, 1f, Adjustments(exposure = 0.5f)), 0.3f, 0.3f, 0.3f)
+        assertTrue(brighter[0] > 0.3f)
+        val shadows = ColorPipeline(FilterPreset.NONE, 1f, Adjustments(shadows = 1f))
+        assertFalse(shadows.isMatrixOnly)
+        assertTrue(apply(shadows, 0.2f, 0.2f, 0.2f)[0] > 0.2f)
+        // El negro y el blanco puros no se mueven.
+        assertEquals(0f, apply(shadows, 0f, 0f, 0f)[0], 1e-4f)
+        assertEquals(1f, apply(shadows, 1f, 1f, 1f)[0], 1e-4f)
+    }
+
+    @Test
+    fun hslOnlyTouchesItsBand() {
+        val adj = Adjustments()
+        val p = ColorPipeline(FilterPreset.NONE, 1f, adj.copy(hslSat = adj.withHsl(adj.hslSat, HslBand.RED, -1f)))
+        val red = apply(p, 0.9f, 0.1f, 0.1f)
+        assertTrue(red[0] - red[1] < 0.2f, "el rojo debe desaturarse")
+        val blue = apply(p, 0.1f, 0.1f, 0.9f)
+        assertEquals(0.9f, blue[2], 1e-3f)
+        assertEquals(0.1f, blue[0], 1e-3f)
+        val gray = apply(p, 0.5f, 0.5f, 0.5f)
+        assertEquals(0.5f, gray[0], 1e-4f)
+    }
+
+    @Test
+    fun curvesKeepRange() {
+        for (c in CurvePreset.entries) for (ch in 0..2) for (i in 0..10) {
+            val v = ColorPipeline.curve(c, i / 10f, ch)
+            assertTrue(v in 0f..1f, "$c fuera de rango")
+        }
+        assertEquals(0.5f, ColorPipeline.curve(CurvePreset.SOFT_S, 0.5f, 0), 1e-4f)
+    }
+
+    @Test
+    fun pixelsKeepAlphaAndVignetteDarkensCorners() {
+        val px = IntArray(25) { 0x80808080.toInt() }
+        ColorPipeline(FilterPreset.NONE, 1f, Adjustments(vignette = 1f)).applyToPixels(px, 5, 5)
+        assertEquals(0x80, px[0] ushr 24)
+        assertEquals(0x80, px[12] and 0xFF)
+        assertTrue((px[0] and 0xFF) < 0x80)
+    }
+
+    @Test
+    fun everyFilterStaysInRange() {
+        for (f in FilterPreset.entries) {
+            val c = apply(ColorPipeline(f, 1f, Adjustments()), 0.3f, 0.6f, 0.9f)
+            assertTrue(c.all { it in 0f..1f }, "$f")
+        }
+    }
+}

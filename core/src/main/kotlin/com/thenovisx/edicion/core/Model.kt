@@ -46,6 +46,42 @@ enum class FilterPreset(val label: String) {
     NIGHT("Noche"),
     DRAMA("Drama"),
     INVERT("Negativo"),
+    CINE("Cine"),
+    FILM("Película"),
+    GOLDEN("Dorado"),
+    PASTEL("Pastel"),
+    NOIR("Noir"),
+    SUMMER("Verano"),
+    WINTER("Invierno"),
+    NEON("Neón"),
+    NOSTALGIA("Nostalgia"),
+    FOREST("Bosque"),
+    SUNSET("Atardecer"),
+    CLEAN("Limpio"),
+}
+
+/** Curvas de tono predefinidas. */
+@Serializable
+enum class CurvePreset(val label: String) {
+    NONE("Lineal"),
+    SOFT_S("Contraste suave"),
+    STRONG_S("Contraste fuerte"),
+    MATTE("Mate"),
+    BRIGHT_MIDS("Medios claros"),
+    DARK_MIDS("Medios oscuros"),
+    CROSS("Proceso cruzado"),
+}
+
+/** Bandas de color para el ajuste HSL. El tono central de cada una está en grados. */
+enum class HslBand(val label: String, val hueDeg: Float) {
+    RED("Rojo", 0f),
+    ORANGE("Naranja", 30f),
+    YELLOW("Amarillo", 60f),
+    GREEN("Verde", 120f),
+    CYAN("Cian", 180f),
+    BLUE("Azul", 230f),
+    PURPLE("Morado", 275f),
+    MAGENTA("Magenta", 320f),
 }
 
 /** Transición al inicio de un clip (desde el clip anterior, o desde negro si es el primero). */
@@ -91,10 +127,38 @@ data class Adjustments(
     val warmth: Float = 0f,
     val tint: Float = 0f,
     val hue: Float = 0f,
+    // Ajustes no lineales (se aplican con una tabla de color).
+    val exposure: Float = 0f,
+    val highlights: Float = 0f,
+    val shadows: Float = 0f,
+    val vibrance: Float = 0f,
+    val fade: Float = 0f,
+    val curve: CurvePreset = CurvePreset.NONE,
+    /** Por banda de [HslBand]: desplazamiento de tono, saturación y luminosidad (-1..1). Vacío = sin cambios. */
+    val hslHue: List<Float> = emptyList(),
+    val hslSat: List<Float> = emptyList(),
+    val hslLum: List<Float> = emptyList(),
+    // Efectos de imagen (0..1).
+    val vignette: Float = 0f,
+    val grain: Float = 0f,
 ) {
-    val isNeutral: Boolean
+    /** Sin cambios de color lineales (los que se resuelven con una matriz). */
+    val isMatrixNeutral: Boolean
         get() = brightness == 0f && contrast == 0f && saturation == 0f &&
             warmth == 0f && tint == 0f && hue == 0f
+
+    /** Sin cambios de color no lineales. */
+    val isGradeNeutral: Boolean
+        get() = exposure == 0f && highlights == 0f && shadows == 0f && vibrance == 0f && fade == 0f &&
+            curve == CurvePreset.NONE && hslHue.all { it == 0f } && hslSat.all { it == 0f } && hslLum.all { it == 0f }
+
+    val isNeutral: Boolean get() = isMatrixNeutral && isGradeNeutral && vignette == 0f && grain == 0f
+
+    fun hsl(list: List<Float>, band: HslBand): Float = list.getOrElse(band.ordinal) { 0f }
+
+    /** Devuelve una copia con el valor de una banda HSL cambiado. */
+    fun withHsl(list: List<Float>, band: HslBand, value: Float): List<Float> =
+        List(HslBand.entries.size) { i -> if (i == band.ordinal) value else list.getOrElse(i) { 0f } }
 }
 
 /** Clip de la pista principal (vídeo o foto). Los tiempos están en milisegundos. */
@@ -122,6 +186,12 @@ data class Clip(
     val height: Int = 0,
     val transition: TransitionType = TransitionType.NONE,
     val transitionMs: Long = DEFAULT_TRANSITION_MS,
+    /** Encuadre dentro del lienzo: rellenar recortando, zoom y desplazamiento (-1..1). */
+    val fill: Boolean = false,
+    val zoom: Float = 1f,
+    val panX: Float = 0f,
+    val panY: Float = 0f,
+    val hasAudio: Boolean = true,
 ) {
     /** Duración del fragmento recortado, sin aplicar velocidad. */
     val trimmedDurationMs: Long get() = (trimEndMs - trimStartMs).coerceAtLeast(0)

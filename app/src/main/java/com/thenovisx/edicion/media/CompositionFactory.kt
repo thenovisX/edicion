@@ -1,6 +1,7 @@
 package com.thenovisx.edicion.media
 
 import android.content.Context
+import android.graphics.Matrix
 import android.net.Uri
 import androidx.media3.common.C
 import androidx.media3.common.Effect
@@ -10,10 +11,12 @@ import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.ChannelMixingAudioProcessor
 import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.common.audio.SpeedProvider
+import androidx.media3.effect.MatrixTransformation
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.Presentation
 import androidx.media3.effect.RgbMatrix
 import androidx.media3.effect.ScaleAndRotateTransformation
+import androidx.media3.effect.SingleColorLut
 import androidx.media3.effect.TextureOverlay
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
@@ -22,7 +25,7 @@ import androidx.media3.transformer.Effects
 import com.google.common.collect.ImmutableList
 import com.thenovisx.edicion.core.AudioClip
 import com.thenovisx.edicion.core.Clip
-import com.thenovisx.edicion.core.ColorMath
+import com.thenovisx.edicion.core.ColorPipeline
 import com.thenovisx.edicion.core.LANE_LAYER_BASE
 import com.thenovisx.edicion.core.MediaKind
 import com.thenovisx.edicion.core.Project
@@ -115,13 +118,34 @@ class CompositionFactory(private val context: Context) {
                 .setRotationDegrees(-clip.rotation.toFloat())
                 .build()
         }
-        val color = ColorMath.combined(clip.filter, clip.filterIntensity, clip.adjustments)
-        if (!color.isIdentity) {
-            val m = color.toColumnMajor4x4()
-            video += RgbMatrix { _, _ -> m }
+        val color = ColorPipeline(clip.filter, clip.filterIntensity, clip.adjustments)
+        if (color.isMatrixOnly) {
+            if (!color.matrix.isIdentity) {
+                val m = color.matrix.toColumnMajor4x4()
+                video += RgbMatrix { _, _ -> m }
+            }
+        } else {
+            // Los ajustes no lineales (luces, sombras, curvas, HSL) se aplican con una tabla de color 3D.
+            video += SingleColorLut.createFromCube(color.buildCube())
         }
-        // Encaja el clip en el lienzo del proyecto (con bandas negras si la proporción no coincide).
-        video += Presentation.createForWidthAndHeight(outW, outH, Presentation.LAYOUT_SCALE_TO_FIT)
+        // Encaja el clip en el lienzo del proyecto: con bandas negras, o recortando si se pidió rellenar.
+        video += Presentation.createForWidthAndHeight(
+            outW, outH,
+            if (clip.fill) Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP else Presentation.LAYOUT_SCALE_TO_FIT,
+        )
+        if (clip.zoom != 1f || clip.panX != 0f || clip.panY != 0f) {
+            val matrix = Matrix().apply {
+                postScale(clip.zoom, clip.zoom)
+                // Coordenadas normalizadas: +y es hacia arriba, y en el modelo +y es hacia abajo.
+                postTranslate(clip.panX, -clip.panY)
+            }
+            video += MatrixTransformation { matrix }
+        }
+        val fx = buildList {
+            if (clip.adjustments.vignette > 0f) add(ImageFx.vignette(clip.adjustments.vignette, outW, outH))
+            if (clip.adjustments.grain > 0f) add(ImageFx.grain(clip.adjustments.grain, outW, outH))
+        }
+        if (fx.isNotEmpty()) video += OverlayEffect(ImmutableList.copyOf<TextureOverlay>(fx))
 
         if (clip.kind == MediaKind.VIDEO && clip.effectiveVolume != 1f) {
             audio += volumeProcessor(clip.effectiveVolume)
@@ -190,7 +214,7 @@ class CompositionFactory(private val context: Context) {
 
     private fun volumeProcessor(volume: Float): AudioProcessor =
         ChannelMixingAudioProcessor().apply {
-            for (channels in 1..2) {
+            for (channels in 1..8) {
                 putChannelMixingMatrix(ChannelMixingMatrix.create(channels, channels).scaleBy(volume))
             }
         }

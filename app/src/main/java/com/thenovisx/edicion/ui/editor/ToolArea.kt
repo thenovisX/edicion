@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentCut
+import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flip
@@ -75,7 +76,9 @@ import com.thenovisx.edicion.core.MIN_CLIP_DURATION_MS
 import com.thenovisx.edicion.core.MediaKind
 import com.thenovisx.edicion.core.Project
 import com.thenovisx.edicion.core.formatTime
+import com.thenovisx.edicion.ui.common.AdjustmentSliders
 import com.thenovisx.edicion.ui.common.FilterSwatch
+import com.thenovisx.edicion.ui.common.LabeledSlider
 import com.thenovisx.edicion.ui.theme.Palette
 import kotlin.math.roundToInt
 
@@ -97,14 +100,15 @@ enum class Panel(val title: String) {
     LAYER_ANIM("Animación"),
     IMAGE_STYLE("Tamaño"),
     LAYER_VOLUME("Volumen"),
+    FRAMING("Encuadre"),
 }
 
 fun panelsFor(selection: Selection, project: Project?): Set<Panel> = when (selection) {
     Selection.None -> setOf(Panel.FORMAT)
     is Selection.VideoClip -> {
         val clip = project?.clips?.firstOrNull { it.id == selection.id }
-        if (clip?.kind == MediaKind.IMAGE) setOf(Panel.IMAGE_DURATION, Panel.FILTERS, Panel.ADJUST, Panel.TRANSITION)
-        else setOf(Panel.TRIM, Panel.SPEED, Panel.VOLUME, Panel.FILTERS, Panel.ADJUST, Panel.TRANSITION)
+        if (clip?.kind == MediaKind.IMAGE) setOf(Panel.IMAGE_DURATION, Panel.FILTERS, Panel.ADJUST, Panel.TRANSITION, Panel.FRAMING)
+        else setOf(Panel.TRIM, Panel.SPEED, Panel.VOLUME, Panel.FILTERS, Panel.ADJUST, Panel.TRANSITION, Panel.FRAMING)
     }
     is Selection.Audio -> setOf(Panel.AUDIO_TRIM, Panel.AUDIO_VOLUME)
     is Selection.Text -> setOf(
@@ -186,6 +190,7 @@ fun ToolArea(
                         Tool("Filtros", Icons.Default.PhotoFilter) { onPanel(Panel.FILTERS) }
                         Tool("Ajustes", Icons.Default.Tune) { onPanel(Panel.ADJUST) }
                         Tool("Transición", Icons.Default.SwapHoriz) { onPanel(Panel.TRANSITION) }
+                        Tool("Encuadre", Icons.Default.CropFree) { onPanel(Panel.FRAMING) }
                         Tool("Girar", Icons.Default.RotateRight) { vm.updateClip(sel.id) { it.copy(rotation = it.rotation + 90) } }
                         Tool("Espejo", Icons.Default.Flip) { vm.updateClip(sel.id) { it.copy(flipHorizontal = !it.flipHorizontal) } }
                         Tool("Duplicar", Icons.Default.ContentCopy, onClick = vm::duplicateSelection)
@@ -413,6 +418,49 @@ private fun PanelContent(panel: Panel, project: Project, selection: Selection, v
                 onChange = { v -> vm.updateAudio(audio.id, live = true) { it.copy(volume = v) } },
                 onDone = vm::commitLive,
             )
+        }
+
+        Panel.FRAMING -> if (clip != null) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Rellenar el lienzo (recorta los bordes)", Modifier.weight(1f), fontSize = 13.sp)
+                    Switch(checked = clip.fill, onCheckedChange = { f -> vm.updateClip(clip.id) { it.copy(fill = f) } })
+                }
+                LabeledSlider(
+                    label = "Zoom",
+                    valueText = "${(clip.zoom * 100).roundToInt()} %",
+                    value = clip.zoom,
+                    range = 0.3f..3f,
+                    onChange = { v -> vm.updateClip(clip.id, live = true) { it.copy(zoom = v) } },
+                    onDone = vm::commitLive,
+                )
+                LabeledSlider(
+                    label = "Horizontal",
+                    valueText = "${(clip.panX * 100).roundToInt()}",
+                    value = clip.panX,
+                    range = -1f..1f,
+                    onChange = { v -> vm.updateClip(clip.id, live = true) { it.copy(panX = v) } },
+                    onDone = vm::commitLive,
+                )
+                LabeledSlider(
+                    label = "Vertical",
+                    valueText = "${(clip.panY * 100).roundToInt()}",
+                    value = clip.panY,
+                    range = -1f..1f,
+                    onChange = { v -> vm.updateClip(clip.id, live = true) { it.copy(panY = v) } },
+                    onDone = vm::commitLive,
+                )
+                if (clip.zoom != 1f || clip.panX != 0f || clip.panY != 0f) {
+                    Text(
+                        "Restablecer",
+                        color = Palette.Coral,
+                        fontSize = 13.sp,
+                        modifier = Modifier
+                            .clickable { vm.updateClip(clip.id) { it.copy(zoom = 1f, panX = 0f, panY = 0f) } }
+                            .padding(vertical = 8.dp),
+                    )
+                }
+            }
         }
 
         Panel.TRANSITION -> if (clip != null) {
@@ -676,74 +724,6 @@ private fun sliderToSpeed(v: Float): Float {
 }
 
 private fun speedToSlider(s: Float): Float = (Math.log((s / 0.25f).toDouble()) / Math.log(16.0)).toFloat().coerceIn(0f, 1f)
-
-@Composable
-fun LabeledSlider(
-    label: String,
-    valueText: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    onChange: (Float) -> Unit,
-    onDone: () -> Unit,
-) {
-    Column {
-        Row {
-            Text(label, fontSize = 12.sp, modifier = Modifier.weight(1f))
-            Text(valueText, fontSize = 12.sp, color = Palette.OnSurfaceMuted)
-        }
-        Slider(
-            value = value.coerceIn(range.start, range.endInclusive),
-            onValueChange = onChange,
-            onValueChangeFinished = onDone,
-            valueRange = range,
-            modifier = Modifier.height(32.dp),
-        )
-    }
-}
-
-@Composable
-fun AdjustmentSliders(
-    adjustments: Adjustments,
-    onChange: (Adjustments) -> Unit,
-    onDone: () -> Unit,
-    onReset: () -> Unit,
-) {
-    val items: List<Triple<String, Float, (Float) -> Adjustments>> = listOf(
-        Triple("Brillo", adjustments.brightness) { v -> adjustments.copy(brightness = v) },
-        Triple("Contraste", adjustments.contrast) { v -> adjustments.copy(contrast = v) },
-        Triple("Saturación", adjustments.saturation) { v -> adjustments.copy(saturation = v) },
-        Triple("Temperatura", adjustments.warmth) { v -> adjustments.copy(warmth = v) },
-        Triple("Matiz", adjustments.tint) { v -> adjustments.copy(tint = v) },
-        Triple("Tono", adjustments.hue) { v -> adjustments.copy(hue = v) },
-    )
-    Column {
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            items.forEach { (label, value, update) ->
-                Column(Modifier.width(150.dp)) {
-                    LabeledSlider(
-                        label = label,
-                        valueText = "${(value * 100).roundToInt()}",
-                        value = value,
-                        range = -1f..1f,
-                        onChange = { onChange(update(it)) },
-                        onDone = onDone,
-                    )
-                }
-            }
-        }
-        if (!adjustments.isNeutral) {
-            Text(
-                "Restablecer",
-                color = Palette.Coral,
-                fontSize = 12.sp,
-                modifier = Modifier.clickable(onClick = onReset).padding(vertical = 8.dp),
-            )
-        }
-    }
-}
 
 @Composable
 private fun ColorDot(argb: Long, selected: Boolean, onClick: () -> Unit) {

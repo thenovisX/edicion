@@ -71,6 +71,9 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.thenovisx.edicion.core.formatTime
 import com.thenovisx.edicion.media.ExportOptions
+import com.thenovisx.edicion.media.ExportQuality
+import androidx.compose.material3.Switch
+import androidx.compose.material3.FilterChip
 import com.thenovisx.edicion.ui.theme.Palette
 import kotlinx.coroutines.delay
 
@@ -462,27 +465,38 @@ fun TextInputDialog(
 
 @Composable
 private fun ExportOptionsDialog(onDismiss: () -> Unit, onExport: (ExportOptions) -> Unit) {
-    val options = listOf(720 to "720p (HD)", 1080 to "1080p (Full HD)", 2160 to "4K (si el móvil lo admite)")
+    val options = listOf(720 to "720p", 1080 to "1080p", 2160 to "4K")
     var selected by remember { mutableStateOf(1080) }
+    var quality by remember { mutableStateOf(ExportQuality.entries[ExportQuality.entries.size / 2]) }
+    var hevc by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Exportar vídeo") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Resolución", fontWeight = FontWeight.SemiBold)
-                options.forEach { (value, label) ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { selected = value },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = selected == value, onClick = { selected = value })
-                        Text(label)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    options.forEach { (value, label) ->
+                        FilterChip(selected = selected == value, onClick = { selected = value }, label = { Text(label) })
                     }
                 }
-                Text("MP4 · H.264 · AAC", fontSize = 12.sp, color = Palette.OnSurfaceMuted)
+                Text("Calidad", fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ExportQuality.entries.forEach { q ->
+                        FilterChip(selected = quality == q, onClick = { quality = q }, label = { Text(q.label) })
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Códec HEVC (H.265)", fontWeight = FontWeight.SemiBold)
+                        Text("Archivos más pequeños. Algunos móviles antiguos no lo reproducen.", fontSize = 12.sp, color = Palette.OnSurfaceMuted)
+                    }
+                    Switch(checked = hevc, onCheckedChange = { hevc = it })
+                }
+                Text("MP4 · ${if (hevc) "H.265" else "H.264"} · AAC", fontSize = 12.sp, color = Palette.OnSurfaceMuted)
             }
         },
-        confirmButton = { TextButton(onClick = { onExport(ExportOptions(selected)) }) { Text("Exportar") } },
+        confirmButton = { TextButton(onClick = { onExport(ExportOptions(selected, hevc, quality)) }) { Text("Exportar") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )
 }

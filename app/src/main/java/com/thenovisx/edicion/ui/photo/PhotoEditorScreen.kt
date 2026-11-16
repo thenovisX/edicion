@@ -3,11 +3,8 @@ package com.thenovisx.edicion.ui.photo
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.ColorMatrixColorFilter
 import android.graphics.ImageDecoder
 import android.graphics.Matrix
-import android.graphics.Paint
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.Image
@@ -58,13 +55,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.thenovisx.edicion.core.Adjustments
-import com.thenovisx.edicion.core.ColorMath
+import com.thenovisx.edicion.core.ColorPipeline
 import com.thenovisx.edicion.core.FilterPreset
 import com.thenovisx.edicion.media.Gallery
 import com.thenovisx.edicion.ui.common.FilterSwatch
 import com.thenovisx.edicion.ui.common.colorFilterFor
-import com.thenovisx.edicion.ui.editor.AdjustmentSliders
-import com.thenovisx.edicion.ui.editor.LabeledSlider
+import com.thenovisx.edicion.ui.common.AdjustmentSliders
+import com.thenovisx.edicion.ui.common.LabeledSlider
 import com.thenovisx.edicion.ui.theme.Palette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -114,8 +111,19 @@ fun PhotoEditorScreen(uri: Uri, onBack: () -> Unit) {
         val src = source ?: return@produceState
         value = withContext(Dispatchers.Default) { applyGeometry(src, edit.rotation, edit.flipH, edit.crop) }
     }
-    val colorFilter = remember(edit.filter, edit.intensity, edit.adjustments) {
-        colorFilterFor(edit.filter, edit.intensity, edit.adjustments)
+    val pipeline = remember(edit.filter, edit.intensity, edit.adjustments) {
+        ColorPipeline(edit.filter, edit.intensity, edit.adjustments)
+    }
+    // Si solo hay cambios lineales basta un filtro de color (instantáneo); si no, se procesa la imagen.
+    val needsPixels = !pipeline.isMatrixOnly || edit.adjustments.vignette > 0f || edit.adjustments.grain > 0f
+    val colorFilter = if (needsPixels) null else colorFilterFor(pipeline)
+    val graded by produceState<Bitmap?>(null, preview, pipeline, needsPixels) {
+        val src = preview
+        if (src == null || !needsPixels) {
+            value = null
+        } else {
+            value = withContext(Dispatchers.Default) { applyPipeline(downscale(src, 900), pipeline) }
+        }
     }
 
     Column(
@@ -163,7 +171,7 @@ fun PhotoEditorScreen(uri: Uri, onBack: () -> Unit) {
             Modifier.fillMaxWidth().weight(1f).background(Color.Black),
             contentAlignment = Alignment.Center,
         ) {
-            val bmp = preview
+            val bmp = if (needsPixels) graded ?: preview else preview
             if (bmp != null) {
                 Image(
                     bitmap = bmp.asImageBitmap(),
@@ -270,16 +278,30 @@ private fun applyGeometry(src: Bitmap, rotation: Int, flipH: Boolean, crop: Floa
     return out
 }
 
+private fun downscale(src: Bitmap, maxSide: Int): Bitmap {
+    val side = maxOf(src.width, src.height)
+    if (side <= maxSide) return src
+    val f = maxSide.toFloat() / side
+    return Bitmap.createScaledBitmap(src, (src.width * f).roundToInt().coerceAtLeast(1), (src.height * f).roundToInt().coerceAtLeast(1), true)
+}
+
+/** Aplica color, viñeta y grano píxel a píxel. Devuelve una imagen nueva. */
+private fun applyPipeline(src: Bitmap, pipeline: ColorPipeline): Bitmap {
+    val w = src.width
+    val h = src.height
+    val pixels = IntArray(w * h)
+    src.getPixels(pixels, 0, w, 0, 0, w, h)
+    pipeline.applyToPixels(pixels, w, h)
+    val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    out.setPixels(pixels, 0, w, 0, 0, w, h)
+    return out
+}
+
 /** Aplica todo a la imagen a alta resolución y la guarda en la galería. */
 private suspend fun save(context: Context, uri: Uri, edit: PhotoEdit): Uri = withContext(Dispatchers.Default) {
     val src = decode(context, uri, 4096)
     val geo = applyGeometry(src, edit.rotation, edit.flipH, edit.crop)
-    val out = Bitmap.createBitmap(geo.width, geo.height, Bitmap.Config.ARGB_8888)
-    val matrix = ColorMath.combined(edit.filter, edit.intensity, edit.adjustments)
-    val paint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
-        if (!matrix.isIdentity) colorFilter = ColorMatrixColorFilter(matrix.toAndroid4x5())
-    }
-    Canvas(out).drawBitmap(geo, 0f, 0f, paint)
+    val out = applyPipeline(geo, ColorPipeline(edit.filter, edit.intensity, edit.adjustments))
     withContext(Dispatchers.IO) {
         Gallery.saveImage(context, out, "foto_${System.currentTimeMillis()}.jpg")
     }

@@ -128,6 +128,53 @@ object ColorMath {
         FilterPreset.NIGHT -> scale(0.82f, 0.92f, 1.18f).after(contrast(1.1f)).after(brightness(-0.06f))
         FilterPreset.DRAMA -> contrast(1.35f).after(saturation(0.75f))
         FilterPreset.INVERT -> ColorMatrix3x4.of(-1f, 0f, 0f, 1f, 0f, -1f, 0f, 1f, 0f, 0f, -1f, 1f)
+        FilterPreset.CINE -> saturation(0.9f)
+        FilterPreset.FILM -> scale(1.04f, 1.0f, 0.94f).after(saturation(0.88f))
+        FilterPreset.GOLDEN -> scale(1.1f, 1.02f, 0.82f)
+        FilterPreset.PASTEL -> saturation(0.75f)
+        FilterPreset.NOIR -> saturation(0f)
+        FilterPreset.SUMMER -> scale(1.06f, 1.03f, 0.92f).after(saturation(1.15f))
+        FilterPreset.WINTER -> scale(0.92f, 0.99f, 1.1f).after(saturation(0.85f))
+        FilterPreset.NEON -> saturation(1.5f)
+        FilterPreset.NOSTALGIA -> scale(1.06f, 0.98f, 0.9f).after(saturation(0.7f))
+        FilterPreset.FOREST -> scale(0.96f, 1.03f, 0.95f)
+        FilterPreset.SUNSET -> scale(1.12f, 0.98f, 0.9f)
+        FilterPreset.CLEAN -> ColorMatrix3x4()
+    }
+
+    private fun hslOf(vararg pairs: Pair<HslBand, Float>): List<Float> =
+        List(HslBand.entries.size) { i -> pairs.firstOrNull { it.first.ordinal == i }?.second ?: 0f }
+
+    /** Parte no lineal del aspecto de algunos filtros (curvas, luces, HSL). null si el filtro es solo una matriz. */
+    fun filterLook(preset: FilterPreset): Adjustments? = when (preset) {
+        FilterPreset.CINE -> Adjustments(
+            curve = CurvePreset.SOFT_S, shadows = -0.15f,
+            hslHue = hslOf(HslBand.BLUE to -0.3f, HslBand.GREEN to 0.5f, HslBand.YELLOW to -0.3f),
+            hslSat = hslOf(HslBand.ORANGE to 0.3f, HslBand.CYAN to 0.3f),
+        )
+        FilterPreset.FILM -> Adjustments(curve = CurvePreset.MATTE, highlights = -0.25f, vibrance = 0.15f)
+        FilterPreset.GOLDEN -> Adjustments(highlights = 0.2f, vibrance = 0.25f, curve = CurvePreset.SOFT_S)
+        FilterPreset.PASTEL -> Adjustments(fade = 0.7f, shadows = 0.5f, exposure = 0.1f)
+        FilterPreset.NOIR -> Adjustments(curve = CurvePreset.STRONG_S, shadows = -0.3f)
+        FilterPreset.SUMMER -> Adjustments(vibrance = 0.3f, shadows = 0.2f, hslSat = hslOf(HslBand.BLUE to 0.3f, HslBand.CYAN to 0.3f))
+        FilterPreset.WINTER -> Adjustments(highlights = 0.25f, fade = 0.2f)
+        FilterPreset.NEON -> Adjustments(
+            curve = CurvePreset.STRONG_S,
+            hslSat = hslOf(HslBand.MAGENTA to 0.5f, HslBand.CYAN to 0.5f, HslBand.PURPLE to 0.5f),
+        )
+        FilterPreset.NOSTALGIA -> Adjustments(fade = 0.6f, curve = CurvePreset.CROSS, highlights = -0.2f)
+        FilterPreset.FOREST -> Adjustments(
+            shadows = -0.1f, curve = CurvePreset.SOFT_S,
+            hslSat = hslOf(HslBand.GREEN to 0.4f, HslBand.YELLOW to -0.2f),
+            hslHue = hslOf(HslBand.YELLOW to 0.4f),
+        )
+        FilterPreset.SUNSET -> Adjustments(
+            vibrance = 0.3f, curve = CurvePreset.SOFT_S,
+            hslSat = hslOf(HslBand.ORANGE to 0.4f, HslBand.RED to 0.3f),
+            hslHue = hslOf(HslBand.BLUE to 0.4f),
+        )
+        FilterPreset.CLEAN -> Adjustments(exposure = 0.12f, shadows = 0.3f, highlights = -0.2f, vibrance = 0.25f)
+        else -> null
     }
 
     fun adjustments(a: Adjustments): ColorMatrix3x4 {

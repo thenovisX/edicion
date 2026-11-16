@@ -50,6 +50,7 @@ class MediaImporter(private val context: Context) {
                     width = info.width,
                     height = info.height,
                     rotation = 0,
+                    hasAudio = info.hasAudio,
                 )
             }
         }
@@ -104,6 +105,13 @@ class MediaImporter(private val context: Context) {
                 uri.toString(), name.ifEmpty { "Vídeo" }, true,
                 info.width.toFloat() / info.height, info.durationMs, info.hasAudio,
             )
+        }
+    }
+
+    /** Cuenta los archivos de [uris] que ya no se pueden abrir (borrados o sin permiso). */
+    suspend fun countMissing(uris: List<String>): Int = withContext(Dispatchers.IO) {
+        uris.distinct().count { u ->
+            runCatching { resolver.openAssetFileDescriptor(Uri.parse(u), "r")?.use { } ?: error("nulo") }.isFailure
         }
     }
 

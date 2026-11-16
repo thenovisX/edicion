@@ -122,6 +122,9 @@ object Timeline {
             filterIntensity = c.filterIntensity.coerceIn(0f, 1f),
             rotation = ((c.rotation % 360) + 360) % 360,
             transitionMs = c.transitionMs.coerceIn(200, MAX_TRANSITION_MS),
+            zoom = c.zoom.coerceIn(0.2f, 5f),
+            panX = c.panX.coerceIn(-1f, 1f),
+            panY = c.panY.coerceIn(-1f, 1f),
         )
     }
 

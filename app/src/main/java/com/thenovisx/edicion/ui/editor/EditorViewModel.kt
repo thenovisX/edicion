@@ -80,6 +80,10 @@ class EditorViewModel(app: Application, savedState: SavedStateHandle) : AndroidV
             val p = repo.load(projectId) ?: return@launch
             history = History(p)
             publish(p, reloadPreview = true)
+            val missing = importer.countMissing(
+                p.clips.map { it.uri } + p.audio.map { it.uri } + p.texts.mapNotNull { it.imageUri ?: it.videoUri }
+            )
+            if (missing > 0) toast("No se pueden abrir $missing archivos del proyecto (borrados o movidos)")
         }
         engine.setOnEnded { _state.value = _state.value.copy(playheadMs = _state.value.project?.durationMs ?: 0) }
         // Mientras se reproduce, el cabezal sigue la posición del reproductor.
