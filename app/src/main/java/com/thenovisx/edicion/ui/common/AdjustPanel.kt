@@ -1,5 +1,7 @@
 package com.thenovisx.edicion.ui.common
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -161,4 +163,27 @@ fun AdjustmentSliders(
             }
         }
     }
+}
+
+/** Círculo de color para elegir entre varias opciones. */
+@Composable
+fun ColorChoice(argb: Long, selected: Boolean, onClick: () -> Unit) {
+    androidx.compose.foundation.layout.Box(
+        Modifier
+            .padding(2.dp)
+            .width(30.dp)
+            .height(30.dp)
+            .then(
+                Modifier.background(
+                    androidx.compose.ui.graphics.Color(argb.toInt()),
+                    androidx.compose.foundation.shape.CircleShape,
+                )
+            )
+            .border(
+                if (selected) 3.dp else 1.dp,
+                if (selected) Palette.Coral else Palette.Outline,
+                androidx.compose.foundation.shape.CircleShape,
+            )
+            .clickable(onClick = onClick)
+    )
 }

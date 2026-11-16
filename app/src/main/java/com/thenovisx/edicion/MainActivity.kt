@@ -15,6 +15,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.thenovisx.edicion.ui.editor.EditorScreen
 import com.thenovisx.edicion.ui.home.HomeScreen
+import com.thenovisx.edicion.ui.photo.CollageScreen
 import com.thenovisx.edicion.ui.photo.PhotoEditorScreen
 import com.thenovisx.edicion.ui.theme.EdicionTheme
 
@@ -36,6 +37,7 @@ class MainActivity : ComponentActivity() {
                         HomeScreen(
                             onOpenProject = { id -> nav.navigate("editor/$id") },
                             onEditPhoto = { uri -> nav.navigate("photo?uri=${Uri.encode(uri.toString())}") },
+                            onCollage = { uris -> nav.navigate("collage?uris=${Uri.encode(uris.joinToString("\n"))}") },
                         )
                     }
                     composable(
@@ -43,6 +45,13 @@ class MainActivity : ComponentActivity() {
                         arguments = listOf(navArgument("projectId") { type = NavType.StringType }),
                     ) {
                         EditorScreen(onBack = { nav.popBackStack() })
+                    }
+                    composable(
+                        "collage?uris={uris}",
+                        arguments = listOf(navArgument("uris") { type = NavType.StringType }),
+                    ) { entry ->
+                        val uris = entry.arguments?.getString("uris").orEmpty().split("\n").filter { it.isNotBlank() }.map(Uri::parse)
+                        CollageScreen(uris = uris, onBack = { nav.popBackStack() })
                     }
                     composable(
                         "photo?uri={uri}",

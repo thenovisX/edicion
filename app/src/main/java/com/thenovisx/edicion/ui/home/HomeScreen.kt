@@ -3,6 +3,7 @@ package com.thenovisx.edicion.ui.home
 import android.app.Application
 import android.graphics.Bitmap
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -28,6 +29,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -95,6 +97,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 fun HomeScreen(
     onOpenProject: (String) -> Unit,
     onEditPhoto: (Uri) -> Unit,
+    onCollage: (List<Uri>) -> Unit,
     vm: HomeViewModel = viewModel(),
 ) {
     val projects by vm.projects.collectAsStateWithLifecycle()
@@ -106,6 +109,11 @@ fun HomeScreen(
 
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) onEditPhoto(uri)
+    }
+
+    val pickCollage = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(9)) { uris ->
+        if (uris.size >= 2) onCollage(uris)
+        else if (uris.isNotEmpty()) Toast.makeText(context, "Elige al menos dos fotos para el collage", Toast.LENGTH_SHORT).show()
     }
 
     LazyVerticalGrid(
@@ -146,6 +154,18 @@ fun HomeScreen(
                     colors = listOf(Palette.Violet, Color(0xFF9D7BFF)),
                     modifier = Modifier.weight(1f),
                     onClick = { pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                )
+            }
+        }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Row {
+                BigAction(
+                    title = "Collage",
+                    subtitle = "Une de 2 a 9 fotos en una imagen",
+                    icon = Icons.Default.GridView,
+                    colors = listOf(Palette.Teal, Color(0xFF6EE7D8)),
+                    modifier = Modifier.weight(1f),
+                    onClick = { pickCollage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                 )
             }
         }
