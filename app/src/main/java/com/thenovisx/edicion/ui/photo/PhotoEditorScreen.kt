@@ -80,6 +80,7 @@ import com.thenovisx.edicion.core.Adjustments
 import com.thenovisx.edicion.core.ColorPipeline
 import com.thenovisx.edicion.core.FilterPreset
 import com.thenovisx.edicion.media.Gallery
+import com.thenovisx.edicion.media.ImageFx
 import com.thenovisx.edicion.ui.common.FilterSwatch
 import com.thenovisx.edicion.ui.common.colorFilterFor
 import com.thenovisx.edicion.ui.common.AdjustmentSliders
@@ -168,14 +169,15 @@ fun PhotoEditorScreen(uri: Uri, onBack: () -> Unit) {
         ColorPipeline(edit.filter, edit.intensity, edit.adjustments)
     }
     // Si solo hay cambios lineales basta un filtro de color (instantáneo); si no, se procesa la imagen.
-    val needsPixels = !pipeline.isMatrixOnly || edit.adjustments.vignette > 0f || edit.adjustments.grain > 0f
+    val needsPixels = !pipeline.isMatrixOnly || edit.adjustments.vignette > 0f || edit.adjustments.grain > 0f ||
+        edit.adjustments.blur > 0f
     val colorFilter = if (needsPixels || showOriginal) null else colorFilterFor(pipeline)
-    val graded by produceState<Bitmap?>(null, preview, pipeline, needsPixels) {
+    val graded by produceState<Bitmap?>(null, preview, pipeline, needsPixels, edit.adjustments.blur) {
         val src = preview
         if (src == null || !needsPixels) {
             value = null
         } else {
-            value = withContext(Dispatchers.Default) { applyPipeline(downscale(src, 900), pipeline) }
+            value = withContext(Dispatchers.Default) { applyPipeline(downscale(src, 900), pipeline, edit.adjustments.blur) }
         }
     }
 
@@ -553,11 +555,13 @@ private fun downscale(src: Bitmap, maxSide: Int): Bitmap {
 }
 
 /** Aplica color, viñeta y grano píxel a píxel. Devuelve una imagen nueva y modificable. */
-private fun applyPipeline(src: Bitmap, pipeline: ColorPipeline): Bitmap {
+private fun applyPipeline(src: Bitmap, pipeline: ColorPipeline, blur: Float): Bitmap {
     val w = src.width
     val h = src.height
     val pixels = IntArray(w * h)
     src.getPixels(pixels, 0, w, 0, 0, w, h)
+    // El desenfoque va antes del color para que el grano quede nítido encima.
+    if (blur > 0f) ImageFx.blurPixels(pixels, w, h, ImageFx.blurRadius(blur, minOf(w, h)).roundToInt())
     pipeline.applyToPixels(pixels, w, h)
     val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     out.setPixels(pixels, 0, w, 0, 0, w, h)
@@ -568,7 +572,7 @@ private fun applyPipeline(src: Bitmap, pipeline: ColorPipeline): Bitmap {
 private suspend fun save(context: Context, uri: Uri, edit: PhotoEdit): Uri = withContext(Dispatchers.Default) {
     val src = decodePhoto(context, uri, 4096)
     val geo = applyGeometry(src, edit)
-    val out = applyPipeline(geo, ColorPipeline(edit.filter, edit.intensity, edit.adjustments))
+    val out = applyPipeline(geo, ColorPipeline(edit.filter, edit.intensity, edit.adjustments), edit.adjustments.blur)
     val canvas = Canvas(out)
     val w = out.width
     val h = out.height

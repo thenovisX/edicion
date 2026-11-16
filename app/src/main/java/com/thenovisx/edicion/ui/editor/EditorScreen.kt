@@ -105,6 +105,12 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
         replacingLayerId = null
         if (uri != null && id != null) vm.replaceLayerMedia(id, uri)
     }
+    var replacingClipId by remember { mutableStateOf<String?>(null) }
+    val pickClipReplacement = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        val id = replacingClipId
+        replacingClipId = null
+        if (uri != null && id != null) vm.replaceClip(id, uri)
+    }
     var showStickers by remember { mutableStateOf(false) }
     var showSubtitles by remember { mutableStateOf(false) }
     val pickSrt = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -210,6 +216,8 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
                             isPlaying = isPlaying,
                             selection = state.selection,
                             onSelect = { vm.select(it); panel = null },
+                onMoveItem = vm::moveItem,
+                onMoveEnd = vm::commitLive,
                             onTransform = { id, pan, zoom, rotation ->
                                 vm.updatePose(id) {
                                     it.copy(x = it.x + pan.x, y = it.y + pan.y, scale = it.scale * zoom, rotation = it.rotation + rotation)
@@ -303,6 +311,10 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
                 onSubtitles = { showSubtitles = true },
                 onAddMediaLayer = {
                     pickLayerMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                },
+                onReplaceClip = { id ->
+                    replacingClipId = id
+                    pickClipReplacement.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
                 },
                 onReplaceLayer = { id ->
                     replacingLayerId = id
@@ -404,12 +416,17 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
         )
         is ExportState.Done -> AlertDialog(
             onDismissRequest = vm::dismissExport,
-            title = { Text("¡Vídeo guardado!") },
-            text = { Text("Lo encontrarás en la galería, en la carpeta Movies/Edicion.") },
+            title = { Text(if (e.audioOnly) "¡Audio guardado!" else "¡Vídeo guardado!") },
+            text = {
+                Text(
+                    if (e.audioOnly) "Lo encontrarás en la carpeta Music/Edicion."
+                    else "Lo encontrarás en la galería, en la carpeta Movies/Edicion."
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     val share = Intent(Intent.ACTION_SEND).apply {
-                        type = "video/mp4"
+                        type = if (e.audioOnly) "audio/mp4" else "video/mp4"
                         putExtra(Intent.EXTRA_STREAM, e.uri)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
@@ -419,12 +436,12 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
             dismissButton = {
                 TextButton(onClick = {
                     val view = Intent(Intent.ACTION_VIEW).apply {
-                        setDataAndType(e.uri, "video/mp4")
+                        setDataAndType(e.uri, if (e.audioOnly) "audio/mp4" else "video/mp4")
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                     runCatching { context.startActivity(view) }
                     vm.dismissExport()
-                }) { Text("Ver") }
+                }) { Text(if (e.audioOnly) "Escuchar" else "Ver") }
             },
         )
         is ExportState.Failed -> AlertDialog(
@@ -476,6 +493,7 @@ private fun ExportOptionsDialog(onDismiss: () -> Unit, onExport: (ExportOptions)
     var selected by remember { mutableStateOf(1080) }
     var quality by remember { mutableStateOf(ExportQuality.entries[ExportQuality.entries.size / 2]) }
     var hevc by remember { mutableStateOf(false) }
+    var audioOnly by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Exportar vídeo") },
@@ -500,10 +518,20 @@ private fun ExportOptionsDialog(onDismiss: () -> Unit, onExport: (ExportOptions)
                     }
                     Switch(checked = hevc, onCheckedChange = { hevc = it })
                 }
-                Text("MP4 · ${if (hevc) "H.265" else "H.264"} · AAC", fontSize = 12.sp, color = Palette.OnSurfaceMuted)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Solo audio", fontWeight = FontWeight.SemiBold)
+                        Text("Guarda únicamente el sonido del proyecto como archivo M4A.", fontSize = 12.sp, color = Palette.OnSurfaceMuted)
+                    }
+                    Switch(checked = audioOnly, onCheckedChange = { audioOnly = it })
+                }
+                Text(
+                    if (audioOnly) "M4A · AAC" else "MP4 · ${if (hevc) "H.265" else "H.264"} · AAC",
+                    fontSize = 12.sp, color = Palette.OnSurfaceMuted,
+                )
             }
         },
-        confirmButton = { TextButton(onClick = { onExport(ExportOptions(selected, hevc, quality)) }) { Text("Exportar") } },
+        confirmButton = { TextButton(onClick = { onExport(ExportOptions(selected, hevc, quality, audioOnly)) }) { Text("Exportar") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )
 }
@@ -538,6 +566,10 @@ private val Stickers = listOf(
     "👍", "👏", "🙏", "💪", "👀", "💯", "🔥", "✨", "⭐", "❤️", "💔", "💥",
     "🎉", "🎂", "🎁", "🎵", "🎬", "📸", "🏆", "⚽", "🌈", "☀️", "🌙", "⚡",
     "🌸", "🍕", "☕", "🐶", "🐱", "🚀", "✈️", "🏖️", "📍", "➡️", "⬇️", "✅",
+    "⬆️", "⬅️", "↗️", "🔴", "🟡", "🟢", "🔵", "⚠️", "❌", "❓", "❗", "💬",
+    "👑", "💎", "💰", "🎯", "📌", "🔔", "🕐", "📅", "🎤", "🎧", "🎮", "📱",
+    "🥰", "😱", "🤣", "😇", "🤫", "🫶", "👋", "🤝", "💃", "🕺", "🏃", "🧘",
+    "🌍", "🌊", "🏔️", "🌴", "❄️", "🍂", "🌹", "🦋", "🍔", "🍰", "🥂", "🍿",
 )
 
 @Composable

@@ -29,6 +29,8 @@ data class ExportOptions(
     /** true = HEVC (H.265): archivos más pequeños, menos compatible. */
     val hevc: Boolean = false,
     val quality: ExportQuality = ExportQuality.HIGH,
+    /** true = exporta solo el sonido, como archivo de audio M4A. */
+    val audioOnly: Boolean = false,
 )
 
 /** Calidad de exportación, expresada en bits por píxel y fotograma. */
@@ -47,7 +49,7 @@ class VideoExporter(private val context: Context) {
      * Si la corrutina se cancela, la exportación se detiene.
      */
     suspend fun export(project: Project, options: ExportOptions, onProgress: (Float) -> Unit): Uri {
-        val composition = CompositionFactory(context).build(project, options.shortSide, forPreview = false)
+        val composition = CompositionFactory(context).build(project, options.shortSide, forPreview = false, audioOnly = options.audioOnly)
             ?: error("El proyecto no tiene clips")
         val dir = File(context.cacheDir, "exports").apply { mkdirs() }
         dir.listFiles()?.forEach { it.delete() }
@@ -59,6 +61,11 @@ class VideoExporter(private val context: Context) {
             .toLong().coerceIn(1_000_000, 120_000_000).toInt()
         run(composition, out, options, bitrate, onProgress)
         onProgress(1f)
+        if (options.audioOnly) {
+            return withContext(Dispatchers.IO) {
+                Gallery.saveAudio(context, out, "${safeName(project.name)}_${System.currentTimeMillis()}.m4a").also { out.delete() }
+            }
+        }
         return withContext(Dispatchers.IO) {
             Gallery.saveVideo(context, out, "${safeName(project.name)}_${System.currentTimeMillis()}.mp4")
                 .also { out.delete() }

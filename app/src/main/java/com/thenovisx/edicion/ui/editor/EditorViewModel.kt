@@ -16,6 +16,8 @@ import com.thenovisx.edicion.core.TextLayer
 import com.thenovisx.edicion.core.Timeline
 import com.thenovisx.edicion.data.ProjectRepository
 import com.thenovisx.edicion.media.ExportOptions
+import com.thenovisx.edicion.core.MIN_CLIP_DURATION_MS
+import com.thenovisx.edicion.core.MediaKind
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import com.thenovisx.edicion.media.Speech
@@ -46,7 +48,7 @@ sealed interface Selection {
 sealed interface ExportState {
     data object Idle : ExportState
     data class Running(val progress: Float) : ExportState
-    data class Done(val uri: Uri) : ExportState
+    data class Done(val uri: Uri, val audioOnly: Boolean = false) : ExportState
     data class Failed(val message: String) : ExportState
 }
 
@@ -339,6 +341,23 @@ class EditorViewModel(app: Application, savedState: SavedStateHandle) : AndroidV
         }
     }
 
+    /** Guarda en la galería, como foto, el fotograma del vídeo que hay en el cabezal. */
+    fun saveFrame() {
+        val p = currentProject() ?: return
+        val found = Timeline.sourcePositionAt(p, _state.value.playheadMs)
+        if (found == null) {
+            toast("Coloca el cabezal sobre un vídeo")
+            return
+        }
+        viewModelScope.launch {
+            val frame = importer.grabFrame(found.first, found.second)
+            val saved = frame != null && withContext(Dispatchers.IO) {
+                runCatching { com.thenovisx.edicion.media.Gallery.saveImage(getApplication(), frame, "captura_${System.currentTimeMillis()}.jpg") }.isSuccess
+            }
+            toast(if (saved) "Captura guardada en Pictures/Edicion" else "No se pudo guardar la captura")
+        }
+    }
+
     /** Pasa el sonido del clip seleccionado a la pista de música para editarlo por separado. */
     fun extractAudio() {
         val s = _state.value.selection as? Selection.VideoClip ?: return
@@ -346,6 +365,56 @@ class EditorViewModel(app: Application, savedState: SavedStateHandle) : AndroidV
         edit { p -> Timeline.extractAudio(p, s.id, MediaImporter.newId()).also { newId = it.second }.first }
         if (newId == null) toast("Este clip no tiene sonido que extraer (o tiene la velocidad cambiada)")
         else toast("Sonido movido a la pista de música")
+    }
+
+    /** Mueve un audio o una capa en el tiempo (arrastre en la línea de tiempo). */
+    fun moveItem(selection: Selection, deltaMs: Long) {
+        if (deltaMs == 0L) return
+        when (selection) {
+            is Selection.Audio -> live { Timeline.updateAudio(it, selection.id) { a -> a.copy(startMs = (a.startMs + deltaMs).coerceAtLeast(0)) } }
+            is Selection.Text -> live {
+                Timeline.updateText(it, selection.id) { l ->
+                    val d = deltaMs.coerceIn(-l.startMs, (it.durationMs - l.endMs).coerceAtLeast(-l.startMs))
+                    l.copy(startMs = l.startMs + d, endMs = l.endMs + d)
+                }
+            }
+            else -> Unit
+        }
+    }
+
+    /** Cambia el archivo de un clip conservando filtro, ajustes, encuadre, efecto y transición. */
+    fun replaceClip(id: String, uri: Uri) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(importing = true)
+            val fresh = importer.importVisual(listOf(uri)).firstOrNull()
+            _state.value = _state.value.copy(importing = false)
+            if (fresh == null) {
+                toast("No se pudo leer el archivo")
+                return@launch
+            }
+            updateClip(id) { old ->
+                fresh.copy(
+                    id = old.id,
+                    // Se conserva la duración que ocupaba, si el archivo nuevo da para ello.
+                    trimEndMs = minOf(fresh.sourceDurationMs, if (fresh.kind == MediaKind.IMAGE) old.durationMs else old.trimmedDurationMs).coerceAtLeast(MIN_CLIP_DURATION_MS),
+                    speed = if (fresh.kind == MediaKind.VIDEO) old.speed else 1f,
+                    volume = old.volume, muted = old.muted,
+                    filter = old.filter, filterIntensity = old.filterIntensity, adjustments = old.adjustments,
+                    transition = old.transition, transitionMs = old.transitionMs,
+                    fill = old.fill, zoom = old.zoom, panX = old.panX, panY = old.panY, effect = old.effect,
+                )
+            }
+        }
+    }
+
+    /** Silencia (o devuelve el sonido a) todos los clips de vídeo a la vez. */
+    fun toggleMuteAll() {
+        val p = currentProject() ?: return
+        val videos = p.clips.filter { it.kind == MediaKind.VIDEO }
+        if (videos.isEmpty()) return
+        val mute = videos.any { !it.muted }
+        edit { proj -> proj.copy(clips = proj.clips.map { if (it.kind == MediaKind.VIDEO) it.copy(muted = mute) else it }) }
+        toast(if (mute) "Sonido original silenciado" else "Sonido original activado")
     }
 
     fun toggleMarker() = edit { Timeline.toggleMarker(it, _state.value.playheadMs) }
@@ -596,8 +665,8 @@ class EditorViewModel(app: Application, savedState: SavedStateHandle) : AndroidV
                 val uri = VideoExporter(getApplication()).export(p, options) { progress ->
                     _export.value = ExportState.Running(progress)
                 }
-                edit { it.copy(lastExportUri = uri.toString()) }
-                _export.value = ExportState.Done(uri)
+                if (!options.audioOnly) edit { it.copy(lastExportUri = uri.toString()) }
+                _export.value = ExportState.Done(uri, options.audioOnly)
             } catch (e: CancellationException) {
                 _export.value = ExportState.Idle
                 throw e

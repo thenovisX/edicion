@@ -12,6 +12,7 @@ import androidx.media3.common.audio.ChannelMixingAudioProcessor
 import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.common.audio.SpeedProvider
+import androidx.media3.effect.GaussianBlur
 import androidx.media3.effect.MatrixTransformation
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.Presentation
@@ -44,9 +45,10 @@ class CompositionFactory(private val context: Context) {
      * @param shortSide resolución de salida (lado corto en píxeles).
      * @param forPreview la vista previa no admite huecos ni algunos efectos de velocidad.
      */
-    fun build(project: Project, shortSide: Int, forPreview: Boolean): Composition? {
+    fun build(project: Project, shortSide: Int, forPreview: Boolean, audioOnly: Boolean = false): Composition? {
         if (project.clips.isEmpty()) return null
         val (w, h) = project.aspectRatio.outputSize(shortSide)
+        if (audioOnly) return buildAudioOnly(project)
 
         val videoItems = project.clips.map { videoItem(it, w, h) }
         val aspect = w.toFloat() / h
@@ -84,9 +86,31 @@ class CompositionFactory(private val context: Context) {
             .build()
     }
 
+    /** Solo el sonido del proyecto: el de los clips, la música, la voz y las capas de vídeo. */
+    private fun buildAudioOnly(project: Project): Composition {
+        val main = project.clips.flatMap { clip ->
+            val silent = clip.kind == MediaKind.IMAGE || !clip.hasAudio || clip.effectiveVolume <= 0f
+            if (silent) silenceItems(clip.durationMs.coerceAtLeast(1)) else listOf(videoItem(clip, 2, 2, audioOnly = true))
+        }
+        val sequences = mutableListOf(EditedMediaItemSequence(main))
+        val layerAudio = project.texts.withIndex()
+            .filter { (_, l) -> l.isVideo && l.hasAudio && !l.muted && l.volume > 0f }
+            .map { (i, l) ->
+                AudioClip(
+                    id = l.id, uri = l.videoUri!!, sourceDurationMs = l.sourceDurationMs,
+                    trimStartMs = l.trimStartMs, trimEndMs = minOf(l.trimStartMs + l.durationMs, l.sourceDurationMs),
+                    startMs = l.startMs, volume = l.volume, lane = LANE_LAYER_BASE + i,
+                )
+            }
+        (project.audio + layerAudio).groupBy { it.lane }.toSortedMap().values.forEach { lane ->
+            audioSequence(lane, project.durationMs)?.let { sequences += it }
+        }
+        return Composition.Builder(sequences).build()
+    }
+
     // ---------- Vídeo ----------
 
-    private fun videoItem(clip: Clip, outW: Int, outH: Int): EditedMediaItem {
+    private fun videoItem(clip: Clip, outW: Int, outH: Int, audioOnly: Boolean = false): EditedMediaItem {
         val uri = Uri.parse(clip.uri)
         val builder = MediaItem.Builder().setUri(uri)
         clip.mimeType?.let { builder.setMimeType(it) }
@@ -158,6 +182,10 @@ class CompositionFactory(private val context: Context) {
                 }
             }
         }
+        if (clip.adjustments.blur > 0f) {
+            val sigma = ImageFx.blurRadius(clip.adjustments.blur, minOf(outW, outH)) / 2f
+            if (sigma >= 0.5f) video += GaussianBlur(sigma)
+        }
         val fx = buildList {
             if (clip.adjustments.vignette > 0f) add(ImageFx.vignette(clip.adjustments.vignette, outW, outH))
             if (clip.adjustments.grain > 0f) add(ImageFx.grain(clip.adjustments.grain, outW, outH))
@@ -171,6 +199,7 @@ class CompositionFactory(private val context: Context) {
             audio += FadeAudioProcessor(clip.audioFadeInMs * 1000, clip.audioFadeOutMs * 1000, clip.durationMs * 1000)
         }
 
+        if (audioOnly) return editedBuilder.setRemoveVideo(true).setEffects(Effects(audio, emptyList())).build()
         return editedBuilder.setEffects(Effects(audio, video)).build()
     }
 

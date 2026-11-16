@@ -32,6 +32,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.CropFree
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Cached
+import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.AcUnit
@@ -147,6 +150,7 @@ fun ToolArea(
     onSubtitles: () -> Unit,
     onAddMediaLayer: () -> Unit,
     onReplaceLayer: (String) -> Unit,
+    onReplaceClip: (String) -> Unit,
     onVoice: () -> Unit,
 ) {
     Column(
@@ -194,7 +198,9 @@ fun ToolArea(
                         Tool("Voz", Icons.Default.Mic, Palette.Green, onClick = onVoice)
                         Tool("Dividir", Icons.Default.ContentCut, Palette.Blue, onClick = vm::splitAtPlayhead)
                         Tool("Marcador", Icons.Default.Flag, Palette.Amber, onClick = vm::toggleMarker)
+                        Tool("Silenciar", Icons.Default.VolumeOff, onClick = vm::toggleMuteAll)
                         Tool("Congelar", Icons.Default.AcUnit, onClick = vm::freezeFrame)
+                        Tool("Captura", Icons.Default.PhotoCamera, onClick = vm::saveFrame)
                         Tool("Formato", Icons.Default.AspectRatio) { onPanel(Panel.FORMAT) }
                     }
                     is Selection.VideoClip -> {
@@ -212,6 +218,7 @@ fun ToolArea(
                         Tool("Transición", Icons.Default.SwapHoriz) { onPanel(Panel.TRANSITION) }
                         Tool("Encuadre", Icons.Default.CropFree) { onPanel(Panel.FRAMING) }
                         Tool("Efecto", Icons.Default.AutoAwesome, Palette.Amber) { onPanel(Panel.EFFECT) }
+                        Tool("Reemplazar", Icons.Default.Cached) { onReplaceClip(sel.id) }
                         Tool("Congelar", Icons.Default.AcUnit, onClick = vm::freezeFrame)
                         Tool("Extraer audio", Icons.Default.GraphicEq, onClick = vm::extractAudio)
                         Tool("Girar", Icons.Default.RotateRight) { vm.updateClip(sel.id) { it.copy(rotation = it.rotation + 90) } }
@@ -839,6 +846,18 @@ private fun PanelContent(panel: Panel, project: Project, selection: Selection, v
                     onValueChangeFinished = vm::commitLive,
                     valueRange = 0f..maxOf(project.durationMs.toFloat(), 1f),
                 )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = text.startMs == 0L && text.endMs >= project.durationMs,
+                        onClick = { vm.updateText(text.id) { it.copy(startMs = 0, endMs = project.durationMs) } },
+                        label = { Text("Todo el vídeo") },
+                    )
+                    FilterChip(
+                        selected = false,
+                        onClick = { vm.updateText(text.id) { it.copy(endMs = project.durationMs) } },
+                        label = { Text("Hasta el final") },
+                    )
+                }
                 if (text.isVideo) {
                     LabeledSlider(
                         label = "El vídeo empieza en",

@@ -104,6 +104,19 @@ class MediaImporter(private val context: Context) {
         }.getOrNull()
     }
 
+    /** Fotograma de un vídeo en [sourceMs], tal cual está en el archivo. */
+    suspend fun grabFrame(clip: Clip, sourceMs: Long): android.graphics.Bitmap? = withContext(Dispatchers.IO) {
+        runCatching {
+            val retriever = android.media.MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, Uri.parse(clip.uri))
+                retriever.getFrameAtTime(sourceMs * 1000, android.media.MediaMetadataRetriever.OPTION_CLOSEST)
+            } finally {
+                runCatching { retriever.release() }
+            }
+        }.getOrNull()
+    }
+
     /** Convierte una grabación de voz en un clip de la pista de voz. */
     suspend fun importVoice(file: java.io.File, name: String): AudioClip? = withContext(Dispatchers.IO) {
         val uri = Uri.fromFile(file)

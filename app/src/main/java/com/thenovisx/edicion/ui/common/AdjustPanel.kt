@@ -112,6 +112,7 @@ fun AdjustmentSliders(
                 Item("Viñeta", a.vignette, uni) { a.copy(vignette = it) },
                 Item("Grano", a.grain, uni) { a.copy(grain = it) },
                 Item("Mate", a.fade, uni) { a.copy(fade = it) },
+                Item("Desenfoque", a.blur, uni) { a.copy(blur = it) },
             )
             AdjustGroup.HSL -> listOf(
                 Item("Tono", a.hsl(a.hslHue, band), bi) { a.copy(hslHue = a.withHsl(a.hslHue, band, it)) },

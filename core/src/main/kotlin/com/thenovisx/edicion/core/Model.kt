@@ -193,6 +193,7 @@ data class Adjustments(
     // Efectos de imagen (0..1).
     val vignette: Float = 0f,
     val grain: Float = 0f,
+    val blur: Float = 0f,
 ) {
     /** Sin cambios de color lineales (los que se resuelven con una matriz). */
     val isMatrixNeutral: Boolean
@@ -204,7 +205,7 @@ data class Adjustments(
         get() = exposure == 0f && highlights == 0f && shadows == 0f && vibrance == 0f && fade == 0f &&
             curve == CurvePreset.NONE && hslHue.all { it == 0f } && hslSat.all { it == 0f } && hslLum.all { it == 0f }
 
-    val isNeutral: Boolean get() = isMatrixNeutral && isGradeNeutral && vignette == 0f && grain == 0f
+    val isNeutral: Boolean get() = isMatrixNeutral && isGradeNeutral && vignette == 0f && grain == 0f && blur == 0f
 
     fun hsl(list: List<Float>, band: HslBand): Float = list.getOrElse(band.ordinal) { 0f }
 

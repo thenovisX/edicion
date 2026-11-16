@@ -42,6 +42,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import com.thenovisx.edicion.media.Waveforms
+import androidx.compose.runtime.produceState
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -86,9 +89,15 @@ fun TimelineView(
     selection: Selection,
     onScrub: (Long) -> Unit,
     onSelect: (Selection) -> Unit,
+    /** Mantener pulsado un audio o una capa y arrastrar lo mueve en el tiempo. */
+    onMoveItem: (Selection, Long) -> Unit = { _, _ -> },
+    onMoveEnd: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
+    val context = LocalContext.current
+    val moveItem by rememberUpdatedState(onMoveItem)
+    val moveEnd by rememberUpdatedState(onMoveEnd)
     // Píxeles por segundo (zoom).
     var pxPerSec by remember { mutableStateOf(with(density) { 64.dp.toPx() }) }
     val currentPlayhead by rememberUpdatedState(playheadMs)
@@ -151,6 +160,39 @@ fun TimelineView(
                         } ?: Selection.None
                         selectItem(if (sel == currentSelection) Selection.None else sel)
                     }
+                }
+                .pointerInput(Unit) {
+                    var dragging: Selection = Selection.None
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { pos ->
+                            val p = currentProject
+                            val tMs = currentPlayhead + ((pos.x - center) / pxPerSec * 1000f).toLong()
+                            val lane = if (pos.y < videoBottomPx) -1 else ((pos.y - videoBottomPx) / lanePx).toInt()
+                            val rows = currentLayerRows
+                            dragging = when {
+                                lane < 0 -> Selection.None
+                                lane < currentRowCount -> {
+                                    val hits = p.texts.filterIndexed { i, l -> rows.getOrNull(i) == lane && l.isVisibleAt(tMs) }
+                                    (hits.firstOrNull { currentSelection == Selection.Text(it.id) } ?: hits.lastOrNull())
+                                        ?.let { Selection.Text(it.id) } ?: Selection.None
+                                }
+                                else -> {
+                                    val audioLane = if (lane == currentRowCount) LANE_MUSIC else LANE_VOICE
+                                    p.audio.firstOrNull { it.lane == audioLane && tMs in it.startMs until it.endMs }
+                                        ?.let { Selection.Audio(it.id) } ?: Selection.None
+                                }
+                            }
+                            if (dragging != Selection.None && dragging != currentSelection) selectItem(dragging)
+                        },
+                        onDrag = { change, amount ->
+                            if (dragging != Selection.None) {
+                                change.consume()
+                                moveItem(dragging, (amount.x / pxPerSec * 1000f).toLong())
+                            }
+                        },
+                        onDragEnd = { if (dragging != Selection.None) moveEnd(); dragging = Selection.None },
+                        onDragCancel = { if (dragging != Selection.None) moveEnd(); dragging = Selection.None },
+                    )
                 }
         ) {
             Column(Modifier.fillMaxWidth()) {
@@ -220,7 +262,13 @@ fun TimelineView(
                             val x = xOf(a.startMs)
                             val w = a.durationMs / 1000f * pxPerSec
                             if (x + w >= 0 && x <= widthPx) {
+                                val wave by produceState(Waveforms.cached(a.uri), a.uri) {
+                                    if (value == null) value = Waveforms.load(context, a.uri)
+                                }
                                 LaneItem(
+                                    wave = wave,
+                                    waveFromMs = a.trimStartMs,
+                                    waveToMs = a.trimEndMs,
                                     label = a.name.ifEmpty { "Audio" },
                                     icon = if (lane == LANE_VOICE) Icons.Default.Mic else Icons.Default.MusicNote,
                                     color = color,
@@ -399,6 +447,10 @@ private fun LaneItem(
     selected: Boolean,
     /** Posiciones (en píxeles desde el inicio) de los fotogramas clave. */
     marks: List<Float> = emptyList(),
+    /** Forma de onda del audio y fragmento del archivo que ocupa el elemento. */
+    wave: FloatArray? = null,
+    waveFromMs: Long = 0,
+    waveToMs: Long = 0,
 ) {
     val density = LocalDensity.current
     val wDp = with(density) { (widthPx - 2f).coerceAtLeast(2f).toDp() }
@@ -412,6 +464,22 @@ private fun LaneItem(
             .background(color)
             .then(if (selected) Modifier.border(3.dp, Color.White, shape) else Modifier)
             .drawWithContent {
+                if (wave != null && waveToMs > waveFromMs) {
+                    val step = 4f
+                    var x = 0f
+                    while (x < size.width) {
+                        val t = waveFromMs + (x / size.width * (waveToMs - waveFromMs)).toLong()
+                        val peak = wave.getOrElse((t / Waveforms.BUCKET_MS).toInt()) { 0f }
+                        val h = (peak * size.height * 0.9f).coerceAtLeast(2f)
+                        drawLine(
+                            Color.Black.copy(alpha = 0.35f),
+                            Offset(x, (size.height - h) / 2f),
+                            Offset(x, (size.height + h) / 2f),
+                            strokeWidth = 2.5f,
+                        )
+                        x += step
+                    }
+                }
                 drawContent()
                 marks.forEach { m ->
                     val r = size.height * 0.16f

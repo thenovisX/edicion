@@ -48,4 +48,49 @@ object ImageFx {
             override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings = settings
         }
     }
+
+    /** Radio de desenfoque en píxeles para una imagen cuyo lado corto mide [shortSide]. */
+    fun blurRadius(amount: Float, shortSide: Int): Float = amount.coerceIn(0f, 1f) * shortSide * 0.03f
+
+    /**
+     * Desenfoque de una imagen en memoria: tres pasadas de media móvil en cada dirección,
+     * que se parecen mucho a un desenfoque gaussiano y cuestan lo mismo con cualquier radio.
+     */
+    fun blurPixels(pixels: IntArray, w: Int, h: Int, radius: Int) {
+        if (radius < 1 || w < 2 || h < 2) return
+        val tmp = IntArray(pixels.size)
+        repeat(3) {
+            boxPass(pixels, tmp, w, h, radius, horizontal = true)
+            boxPass(tmp, pixels, w, h, radius, horizontal = false)
+        }
+    }
+
+    private fun boxPass(src: IntArray, dst: IntArray, w: Int, h: Int, radius: Int, horizontal: Boolean) {
+        val lines = if (horizontal) h else w
+        val len = if (horizontal) w else h
+        val stride = if (horizontal) 1 else w
+        val window = radius * 2 + 1
+        for (line in 0 until lines) {
+            val base = if (horizontal) line * w else line
+            var r = 0
+            var g = 0
+            var b = 0
+            // Ventana inicial, repitiendo el borde.
+            for (k in -radius..radius) {
+                val p = src[base + k.coerceIn(0, len - 1) * stride]
+                r += p shr 16 and 0xFF
+                g += p shr 8 and 0xFF
+                b += p and 0xFF
+            }
+            for (i in 0 until len) {
+                val idx = base + i * stride
+                dst[idx] = (src[idx] and 0xFF000000.toInt()) or ((r / window) shl 16) or ((g / window) shl 8) or (b / window)
+                val out = src[base + (i - radius).coerceAtLeast(0) * stride]
+                val inn = src[base + (i + radius + 1).coerceAtMost(len - 1) * stride]
+                r += (inn shr 16 and 0xFF) - (out shr 16 and 0xFF)
+                g += (inn shr 8 and 0xFF) - (out shr 8 and 0xFF)
+                b += (inn and 0xFF) - (out and 0xFF)
+            }
+        }
+    }
 }
