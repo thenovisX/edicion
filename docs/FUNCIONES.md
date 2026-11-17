@@ -71,12 +71,12 @@ Lanzada en abril de 2025, gratuita, sin marca de agua, solo móvil.
 ### 2.1 Proyectos y archivos
 | Función | Estado |
 |---|---|
-| Lista de proyectos, crear, abrir, renombrar, borrar | ✅ |
+| Lista de proyectos, crear, abrir, renombrar, duplicar, borrar | ✅ |
 | Guardado automático del proyecto (JSON local) | ✅ |
 | Formatos de lienzo 9:16, 16:9, 1:1, 4:5, 3:4 | ✅ |
 | Deshacer / rehacer | ✅ |
-| Duplicar proyecto | ✅ |
-| Carpetas de proyectos | 🔜 Etapa 5 |
+| Aviso si faltan archivos del proyecto al abrirlo | ✅ |
+| Carpetas de proyectos, copia de seguridad | 🔜 Etapa 5 |
 | Plantillas propias | 🔜 Etapa 5 |
 | Storyboard / notas de ideas | 🔜 Etapa 5 |
 
@@ -85,31 +85,31 @@ Lanzada en abril de 2025, gratuita, sin marca de agua, solo móvil.
 |---|---|
 | Importar vídeos y fotos (selector de fotos de Android) | ✅ |
 | Importar audio desde archivos | ✅ |
-| Cámara propia con teleprompter | 🔜 Etapa 4 |
 | Grabar voz en off desde la app | ✅ |
+| Reemplazar el archivo de un clip conservando sus ediciones | ✅ |
+| Cámara propia con teleprompter | 🔜 Etapa 4 |
 
 ### 2.3 Línea de tiempo y edición básica
 | Función | Estado |
 |---|---|
 | Pista principal de vídeo/fotos | ✅ |
-| Pista de música/audio con huecos (empieza en cualquier momento) | ✅ |
-| Pista de capas: textos, stickers e imágenes superpuestas | ✅ |
-| Pista de voz independiente de la música | ✅ |
-| Dividir en el cabezal | ✅ |
-| Recortar inicio/fin | ✅ |
-| Reordenar, duplicar, borrar clips | ✅ |
-| Duración de fotos | ✅ |
-| Zoom de la línea de tiempo con pellizco | ✅ |
-| Arrastrar para moverse por el tiempo | ✅ |
-| Superposición de imagen (logo, foto) con tamaño, opacidad y rotación | ✅ |
-| Superposición de vídeo (PiP) con su audio, recorte, tamaño, opacidad y rotación | ✅ |
-| Capas ilimitadas, repartidas en filas, con orden al frente/al fondo | ✅ |
-| Modos de fusión y máscaras en capas | 🔜 Etapa 3 |
-| Transiciones: fundido a negro y a blanco con duración | ✅ |
-| Transiciones: disolución cruzada, deslizar, zoom, desenfoque | 🔜 Etapa 3 |
-| Congelar fotograma, invertir clip | 🔜 Etapa 3 |
-| Marcadores de ritmo | 🔜 Etapa 3 |
-| Fotogramas clave (posición, escala, rotación, opacidad, volumen) | 🔜 Etapa 3 |
+| Pistas de música y de voz independientes, con huecos | ✅ |
+| Capas ilimitadas (texto, stickers, imágenes, vídeos) repartidas en filas | ✅ |
+| Dividir, recortar, reordenar, duplicar, borrar | ✅ |
+| Zoom de la línea de tiempo con pellizco y arrastre para moverse | ✅ |
+| Mover audios y capas manteniendo pulsado y arrastrando | ✅ |
+| Formas de onda en las pistas de audio | ✅ |
+| Marcadores en la regla | ✅ |
+| Fotogramas clave de capa (posición, tamaño, giro, opacidad) con marcas en la pista | ✅ |
+| Formas de recorte para capas (círculo, corazón, estrella…) y volteo | ✅ |
+| Transiciones: fundidos, zoom, empuje en 4 direcciones, giro y destello | ✅ |
+| Congelar fotograma | ✅ |
+| Encuadre del clip: rellenar, zoom, desplazamiento y fondo desenfocado | ✅ |
+| Silenciar todo el sonido original de una vez | ✅ |
+| Disolución cruzada real entre clips | 🔜 Etapa 3 |
+| Invertir clip (reproducir al revés) | 🔜 Etapa 3 |
+| Modos de fusión en capas | 🔜 Etapa 3 |
+| Fotogramas clave de volumen y de clips de la pista principal | 🔜 Etapa 3 |
 
 ### 2.4 Velocidad
 | Función | Estado |
@@ -120,59 +120,69 @@ Lanzada en abril de 2025, gratuita, sin marca de agua, solo móvil.
 ### 2.5 Color, filtros y efectos (vídeo)
 | Función | Estado |
 |---|---|
-| Ajustes: brillo, contraste, saturación, tono, temperatura | ✅ |
-| Filtros propios (B/N, sepia, cálido, frío, vívido, vintage, noche, mate…) | ✅ |
+| Luz: exposición, brillo, contraste, luces, sombras | ✅ |
+| Color: saturación, intensidad, temperatura, matiz, tono | ✅ |
+| Curvas de tono predefinidas | ✅ |
+| HSL por color (8 bandas: tono, saturación, luminosidad) | ✅ |
+| 23 filtros propios con intensidad | ✅ |
+| Viñeta, grano, mate y desenfoque | ✅ |
+| Efectos de clip: acercar/alejar lento, paneo, temblor, latido, balanceo, estrobo, fallo | ✅ |
 | Rotación y espejo del clip | ✅ |
-| Viñeta, grano, nitidez, desenfoque | 🔜 Etapa 2 |
-| LUT / presets de color guardables | 🔜 Etapa 2 |
-| Efectos (glitch, zoom, sacudida, destellos) | 🔜 Etapa 3 |
+| Nitidez | 🔜 Etapa 3 |
+| Curvas editables punto a punto, presets guardables y carga de LUT | 🔜 Etapa 3 |
 | Croma / pantalla verde | 🔜 Etapa 3 |
-| Máscaras y modos de fusión | 🔜 Etapa 3 |
-| Estabilización | 🔜 Etapa 4 |
-| Fondo desenfocado / lienzo de color | 🔜 Etapa 2 |
+| Lienzo de color o imagen de fondo | 🔜 Etapa 3 |
+| Estabilización | 🧪 Etapa 4 |
 
 ### 2.6 Texto y subtítulos
 | Función | Estado |
 |---|---|
-| Textos con inicio/fin, posición, tamaño, color, fondo, negrita | ✅ |
-| 6 tipos de letra, cursiva, contorno, sombra, opacidad y rotación | ✅ |
-| Animaciones de entrada/salida: fundido, deslizar, zoom, máquina de escribir | ✅ |
-| Stickers (emojis) | ✅ |
-| Mover, escalar y girar capas con los dedos sobre la vista previa | ✅ |
-| Plantillas de texto, estilo por palabra, fuentes descargables | 🔜 Etapa 3 |
-| Stickers animados y GIF | 🔜 Etapa 3 |
-| Subtítulos automáticos (voz a texto en el dispositivo) | 🧪 Etapa 4 |
-| Texto a voz | 🧪 Etapa 4 |
+| Textos con tiempo, posición, tamaño, color, fondo, contorno, sombra, 6 tipos de letra | ✅ |
+| 9 estilos de texto listos para aplicar | ✅ |
+| Animaciones de entrada/salida y máquina de escribir | ✅ |
+| Stickers (emojis, 96 incluidos) | ✅ |
+| Mover, escalar y girar capas con los dedos | ✅ |
+| Subtítulos escritos (una frase por línea, repartidos automáticamente) | ✅ |
+| Importar subtítulos .srt | ✅ |
+| Aplicar el estilo de un subtítulo a todos | ✅ |
+| Texto a voz con el motor del teléfono | ✅ |
+| Estilo por palabra, fuentes descargables, stickers animados y GIF | 🔜 Etapa 3 |
+| Subtítulos automáticos (voz a texto) | 🧪 Etapa 4 |
 
 ### 2.7 Audio
 | Función | Estado |
 |---|---|
 | Volumen por clip y silenciar | ✅ |
-| Música de fondo recortable con volumen | ✅ |
-| Fundido de entrada/salida de audio | 🔜 Etapa 2 |
-| Extraer audio de un vídeo | 🔜 Etapa 2 |
-| Editor de audio independiente (cortar y exportar M4A) | 🔜 Etapa 2 |
-| Efectos de voz, reducción de ruido, eliminar silencios | 🧪 Etapa 4 |
+| Música y voz recortables, con volumen | ✅ |
+| Fundido de entrada y salida (audios y sonido de los clips) | ✅ |
+| Cambiador de tono (grave, agudo, ardilla…) | ✅ |
+| Extraer el audio de un vídeo a su propia pista | ✅ |
+| Exportar solo el audio (M4A) | ✅ |
+| Atenuar la música automáticamente bajo la voz | 🔜 Etapa 3 |
+| Reducción de ruido, ecualizador, eliminar silencios | 🧪 Etapa 4 |
 | Biblioteca de sonidos propia/libre de derechos | 🔜 Etapa 5 |
 
 ### 2.8 Exportación
 | Función | Estado |
 |---|---|
-| Exportar MP4 (H.264/AAC) en 720p, 1080p y 4K | ✅ |
-| Barra de progreso y cancelación | ✅ |
-| Guardado en la galería (Movies/Edicion) y compartir | ✅ |
-| Elegir fps y bitrate, HEVC | 🔜 Etapa 2 |
-| Exportar como GIF / solo audio | 🔜 Etapa 3 |
+| MP4 en 720p, 1080p y 4K | ✅ |
+| Calidad (4 niveles de bitrate) y códec H.264 o HEVC | ✅ |
+| Solo audio (M4A) | ✅ |
+| Captura del fotograma actual como foto | ✅ |
+| Barra de progreso, cancelación, guardar en galería y compartir | ✅ |
+| Elegir fotogramas por segundo, exportar GIF | 🔜 Etapa 3 |
 
 ### 2.9 Editor de fotos
 | Función | Estado |
 |---|---|
-| Exposición, contraste, saturación, temperatura, matiz, brillo | ✅ |
-| Filtros propios | ✅ |
-| Rotar 90°, voltear, recortar a proporción | ✅ |
-| Guardar en la galería (Pictures/Edicion) | ✅ |
-| Altas luces/sombras, curvas, HSL, viñeta, nitidez, grano | 🔜 Etapa 2 |
-| Texto y stickers sobre foto, collage | 🔜 Etapa 3 |
+| Mismo motor de color que el vídeo (luz, color, curvas, HSL, viñeta, grano, desenfoque) | ✅ |
+| 23 filtros propios | ✅ |
+| Rotar, voltear (horizontal y vertical), recortar a proporción, enderezar | ✅ |
+| Marco de color con grosor | ✅ |
+| Texto y stickers que se mueven, escalan y giran con los dedos | ✅ |
+| Deshacer y comparar con el original (mantener pulsado) | ✅ |
+| Collage de 2 a 9 fotos con distribución, formato, separación y fondo | ✅ |
+| Recorte libre con asas, nitidez | 🔜 Etapa 3 |
 | Quitar fondo, borrar objetos, retoque de piel | 🧪 Etapa 4 |
 
 ### 2.10 IA (en dispositivo cuando sea posible)
@@ -188,51 +198,38 @@ Lanzada en abril de 2025, gratuita, sin marca de agua, solo móvil.
 
 ## 3. Etapas
 
-1. **Base del editor (hecha):** proyectos, importación, línea de tiempo con
-   vídeo/foto, música y texto, recorte, división, velocidad, volumen, filtros,
-   ajustes, rotación, exportación MP4 y editor de fotos.
-2. **Pulido creativo (en curso):** hechas las transiciones por fundido, fuentes y
-   animaciones de texto, stickers, capas de imagen y voz en off. Quedan fundidos de audio,
-   más ajustes de color y el editor de audio.
-3. **Multipista avanzada:** superposiciones (PiP), fotogramas clave, curvas de
-   velocidad, croma, máscaras, efectos, congelar e invertir.
-4. **IA en el dispositivo y cámara:** subtítulos automáticos, quitar fondo,
-   seguimiento, estabilización, cámara con teleprompter.
-5. **Contenido y automatización:** plantillas, biblioteca de sonidos, montaje
-   automático, storyboard.
+1. **Base del editor (hecha):** proyectos, importación, línea de tiempo, recorte, división,
+   velocidad, volumen, filtros, ajustes, exportación MP4 y editor de fotos.
+2. **Pulido creativo (hecha):** transiciones, texto con estilos y animaciones, stickers, capas de
+   imagen y vídeo, voz en off, motor de color completo, fundidos de audio, opciones de exportación.
+3. **Multipista avanzada (en curso):** hechos los fotogramas clave de capa, formas, efectos de
+   clip, congelar, marcadores, formas de onda y collage. Quedan curvas de velocidad, croma,
+   modos de fusión, invertir y disolución cruzada.
+4. **IA en el dispositivo y cámara:** subtítulos automáticos, quitar fondo, seguimiento,
+   estabilización, cámara con teleprompter. Hecho ya: texto a voz.
+5. **Contenido y automatización:** plantillas, biblioteca de sonidos, montaje automático.
 
 ## 4. Lo que aún falta respecto a las apps de referencia
 
-Lista completa de lo pendiente, agrupada por la etapa en la que está previsto.
-
-**Etapa 2 (resto)**
-- Fundido de entrada/salida de audio y volumen con puntos (ducking de la música bajo la voz).
-- Extraer el audio de un vídeo a su propia pista.
-- Editor de audio independiente (cortar, unir y exportar M4A).
-- Vídeo: viñeta, grano, nitidez, desenfoque, altas luces/sombras, curvas y HSL por color.
-- Presets de color guardables y carga de LUT.
-- Fondo del lienzo: color, desenfocado o imagen; zoom y encuadre del clip dentro del lienzo.
-- Exportación: elegir fps y bitrate, HEVC, solo audio.
-- Foto: altas luces/sombras, curvas, HSL, viñeta, nitidez, grano, recorte libre y enderezado.
-
-**Etapa 3**
-- Modos de fusión y máscaras en las capas; exportación más rápida de capas de vídeo.
-- Fotogramas clave (posición, escala, rotación, opacidad, volumen).
-- Curvas de velocidad, congelar fotograma, reproducir al revés.
-- Croma (pantalla verde).
-- Más transiciones (disolución, deslizar, zoom, desenfoque) y efectos (glitch, sacudida, destellos).
-- Plantillas de texto, stickers animados.
-- Marcadores de ritmo y forma de onda en las pistas de audio.
-- Foto: texto y stickers, collage, marcos y bordes.
-- Exportar GIF.
+**Etapa 3 (resto)**
+- Disolución cruzada real entre clips (hoy las transiciones son fundidos y movimientos).
+- Curvas de velocidad e invertir clip.
+- Croma (pantalla verde) y modos de fusión en las capas.
+- Fotogramas clave también para el volumen y para los clips de la pista principal.
+- Atenuar la música automáticamente bajo la voz.
+- Curvas editables punto a punto, nitidez, presets de color guardables y carga de LUT.
+- Lienzo de color o imagen de fondo.
+- Stickers animados, GIF, estilo de texto por palabra y fuentes descargables.
+- Exportar GIF y elegir fotogramas por segundo.
+- Exportación más rápida de las capas de vídeo.
+- Foto: recorte libre con asas.
 
 **Etapa 4 (IA en el dispositivo y cámara)**
-- Subtítulos automáticos (voz a texto) y subtítulos animados; traducción de subtítulos.
-- Texto a voz.
+- Subtítulos automáticos (voz a texto), subtítulos animados y traducción.
 - Quitar fondo / recorte de sujeto en vídeo y foto; borrar objetos; retoque de piel.
 - Seguimiento de objetos y reencuadre automático por formato.
 - Estabilización.
-- Audio: reducción de ruido, mejora de voz, efectos de voz, ecualizador, eliminar silencios, aislar voz.
+- Audio: reducción de ruido, mejora de voz, ecualizador, eliminar silencios, aislar voz.
 - Cámara propia con teleprompter, zonas seguras y grabación por tomas.
 
 **Etapa 5 (contenido y automatización)**
@@ -243,6 +240,10 @@ Lista completa de lo pendiente, agrupada por la etapa en la que está previsto.
 - Funciones generativas (estilos, expansión de fondo, efectos de sonido por texto, doblaje,
   clonación de voz, avatares): requieren un servicio externo de IA.
 - Publicación directa en redes y estadísticas: dependen de las API de cada red.
+
+**Importante:** todo lo marcado como hecho compila y pasa las pruebas automáticas del núcleo,
+pero aún no se ha probado en un teléfono real. Lo más delicado (por depender del hardware de
+cada móvil) es la exportación con HEVC o 4K, el desenfoque, el fondo desenfocado y el texto a voz.
 
 ## 5. Fuentes consultadas
 

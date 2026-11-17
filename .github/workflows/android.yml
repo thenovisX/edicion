@@ -26,7 +26,13 @@ jobs:
         run: ./gradlew :core:test --stacktrace
 
       - name: Compilar APK de depuración
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          # Si falla, los errores de compilación se muestran como anotaciones del trabajo.
+          ./gradlew :app:assembleDebug 2>&1 | tee build.log || {
+            grep '^e: ' build.log | head -40 | sed 's/^/::error::/'
+            exit 1
+          }
 
       - name: Subir APK
         uses: actions/upload-artifact@v4

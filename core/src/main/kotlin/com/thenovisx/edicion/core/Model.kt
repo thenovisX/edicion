@@ -246,6 +246,8 @@ data class Clip(
     val panY: Float = 0f,
     val hasAudio: Boolean = true,
     val effect: ClipEffect = ClipEffect.NONE,
+    /** Si el clip no llena el lienzo, rellena los huecos con el propio clip desenfocado. */
+    val blurBackground: Boolean = false,
     /** Fundido del sonido del clip al empezar y al acabar. */
     val audioFadeInMs: Long = 0,
     val audioFadeOutMs: Long = 0,

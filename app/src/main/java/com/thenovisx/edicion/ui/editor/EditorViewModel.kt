@@ -401,7 +401,7 @@ class EditorViewModel(app: Application, savedState: SavedStateHandle) : AndroidV
                     volume = old.volume, muted = old.muted,
                     filter = old.filter, filterIntensity = old.filterIntensity, adjustments = old.adjustments,
                     transition = old.transition, transitionMs = old.transitionMs,
-                    fill = old.fill, zoom = old.zoom, panX = old.panX, panY = old.panY, effect = old.effect,
+                    fill = old.fill, zoom = old.zoom, panX = old.panX, panY = old.panY, effect = old.effect, blurBackground = old.blurBackground,
                 )
             }
         }

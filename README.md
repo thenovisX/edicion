@@ -6,22 +6,23 @@ App Android de edición multimedia (vídeo, foto y audio) pensada para el móvil
 ## Qué hace ya
 
 - **Proyectos:** crear (9:16, 16:9, 1:1, 4:5, 3:4), abrir, renombrar, duplicar y borrar. Guardado automático.
-- **Editor de vídeo** con vista previa y línea de tiempo de cuatro pistas (vídeo/fotos, capas, música y voz):
-  - Importar vídeos y fotos desde la galería, y música desde archivos.
-  - Dividir en el cabezal, recortar, reordenar, duplicar y borrar.
-  - Velocidad 0,25×–4×, volumen y silencio por clip.
-  - Transiciones por fundido a negro o blanco, con duración ajustable.
-  - 11 filtros propios con intensidad y ajustes de brillo, contraste, saturación, temperatura, matiz y tono.
-  - Girar y espejo.
-  - Textos con 6 tipos de letra, color, fondo, contorno, sombra, opacidad, rotación y
-    animaciones de entrada y salida (fundido, deslizar, zoom, máquina de escribir).
-  - Capas ilimitadas de stickers, imágenes y vídeos superpuestos, con tamaño, opacidad,
-    rotación y orden. La capa seleccionada se mueve, escala y gira con los dedos en la vista previa.
-  - Música con recorte, volumen y posición de inicio.
-  - Voz en off grabada desde la app, en su propia pista.
-  - Deshacer/rehacer, zoom con pellizco en la línea de tiempo.
-  - Exportación a MP4 (720p, 1080p o 4K) en la galería, con progreso, cancelación y compartir.
-- **Editor de fotos:** filtros, ajustes, girar, voltear, recortar a proporción y guardar en la galería.
+- **Editor de vídeo** con vista previa y línea de tiempo (vídeo/fotos, capas, música y voz):
+  - Importar vídeos, fotos y música; reemplazar un clip conservando sus ediciones.
+  - Dividir, recortar, reordenar, duplicar, borrar, congelar fotograma y velocidad 0,25×–4×.
+  - Transiciones: fundidos, zoom, empuje, giro y destello. Efectos de clip: acercar lento, paneo,
+    temblor, latido, balanceo, estrobo y fallo.
+  - Color: 23 filtros propios, luz, color, curvas, HSL por color, viñeta, grano y desenfoque.
+  - Encuadre: rellenar, zoom, desplazamiento y fondo desenfocado.
+  - Capas ilimitadas de texto, stickers, imágenes y vídeos, con fotogramas clave, formas de recorte,
+    animaciones y estilos; se mueven, escalan y giran con los dedos.
+  - Subtítulos escritos o importados de un .srt, y texto a voz.
+  - Audio: música y voz en off con formas de onda, fundidos, cambiador de tono y extracción del
+    audio de un vídeo. Los audios y las capas se mueven manteniendo pulsado y arrastrando.
+  - Marcadores, deshacer/rehacer y zoom con pellizco.
+  - Exportación a MP4 (720p, 1080p o 4K; H.264 o HEVC; cuatro calidades) o solo audio (M4A).
+- **Editor de fotos:** el mismo motor de color, recorte, enderezado, marco, texto y stickers,
+  deshacer y comparación con el original.
+- **Collage** de 2 a 9 fotos.
 
 El inventario completo de funciones (basado en lo que ofrecen los editores móviles
 más usados) y la hoja de ruta por etapas está en [docs/FUNCIONES.md](docs/FUNCIONES.md).
@@ -46,5 +47,8 @@ Requisitos para compilar en local: JDK 17 y Android SDK 35.
 ## Limitaciones conocidas
 
 - Requiere Android 9 o superior.
-- Las transiciones son fundidos por color; la disolución cruzada entre clips está pendiente.
+- La app se compila y sus pruebas automáticas pasan, pero todavía no se ha probado en un teléfono real.
+- Las transiciones son fundidos y movimientos; la disolución cruzada entre clips está pendiente.
 - Exportar proyectos con capas de vídeo es más lento que sin ellas.
+- Tras saltar a otro punto en la vista previa, los fundidos de audio suenan desde donde se reanuda;
+  en el vídeo exportado son exactos.

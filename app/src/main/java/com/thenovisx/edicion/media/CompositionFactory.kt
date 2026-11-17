@@ -13,6 +13,7 @@ import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.common.audio.SpeedProvider
 import androidx.media3.effect.GaussianBlur
+import androidx.media3.effect.GaussianBlurWithFrameOverlaid
 import androidx.media3.effect.MatrixTransformation
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.Presentation
@@ -50,7 +51,8 @@ class CompositionFactory(private val context: Context) {
         val (w, h) = project.aspectRatio.outputSize(shortSide)
         if (audioOnly) return buildAudioOnly(project)
 
-        val videoItems = project.clips.map { videoItem(it, w, h) }
+        val starts = Timeline.clipStarts(project)
+        val videoItems = project.clips.mapIndexed { i, c -> videoItem(c, w, h, startMs = starts[i]) }
         val aspect = w.toFloat() / h
         val sequences = mutableListOf(EditedMediaItemSequence(videoItems))
 
@@ -110,7 +112,7 @@ class CompositionFactory(private val context: Context) {
 
     // ---------- Vídeo ----------
 
-    private fun videoItem(clip: Clip, outW: Int, outH: Int, audioOnly: Boolean = false): EditedMediaItem {
+    private fun videoItem(clip: Clip, outW: Int, outH: Int, audioOnly: Boolean = false, startMs: Long = 0): EditedMediaItem {
         val uri = Uri.parse(clip.uri)
         val builder = MediaItem.Builder().setUri(uri)
         clip.mimeType?.let { builder.setMimeType(it) }
@@ -157,6 +159,18 @@ class CompositionFactory(private val context: Context) {
             // Los ajustes no lineales (luces, sombras, curvas, HSL) se aplican con una tabla de color 3D.
             video += SingleColorLut.createFromCube(color.buildCube())
         }
+        if (clip.blurBackground && !clip.fill && clip.width > 0 && clip.height > 0) {
+            // Fondo desenfocado: el clip borroso llena el lienzo y encima va el clip nítido, reducido
+            // lo justo para que quepa entero. Después se recorta al formato del proyecto.
+            val turned = clip.rotation % 180 != 0
+            val srcAspect = if (turned) clip.height.toFloat() / clip.width else clip.width.toFloat() / clip.height
+            val canvasAspect = outW.toFloat() / outH
+            val s = minOf(canvasAspect / srcAspect, srcAspect / canvasAspect)
+            if (s < 0.98f) {
+                video += GaussianBlurWithFrameOverlaid(minOf(outW, outH) * 0.03f, s, s)
+                video += Presentation.createForWidthAndHeight(outW, outH, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP)
+            }
+        }
         // Encaja el clip en el lienzo del proyecto: con bandas negras, o recortando si se pidió rellenar.
         video += Presentation.createForWidthAndHeight(
             outW, outH,
@@ -174,10 +188,12 @@ class CompositionFactory(private val context: Context) {
             val effect = clip.effect
             val durationMs = clip.durationMs
             val aspect = outW.toFloat() / outH
-            video += MatrixTransformation { tUs -> motionMatrix(Timeline.clipEffectAt(effect, tUs / 1000, durationMs).first, aspect) }
+            // Los efectos del clip reciben el tiempo de la secuencia completa: se resta el inicio del clip.
+            fun rel(tUs: Long): Long = (tUs / 1000).let { if (it >= startMs - 50) it - startMs else it }
+            video += MatrixTransformation { tUs -> motionMatrix(Timeline.clipEffectAt(effect, rel(tUs), durationMs).first, aspect) }
             if (effect == ClipEffect.STROBE || effect == ClipEffect.GLITCH) {
                 video += RgbMatrix { tUs, _ ->
-                    val add = Timeline.clipEffectAt(effect, tUs / 1000, durationMs).second
+                    val add = Timeline.clipEffectAt(effect, rel(tUs), durationMs).second
                     floatArrayOf(1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f, add, add, add, 1f)
                 }
             }

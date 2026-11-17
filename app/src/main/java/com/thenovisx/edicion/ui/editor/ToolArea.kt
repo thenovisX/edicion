@@ -539,6 +539,12 @@ private fun PanelContent(panel: Panel, project: Project, selection: Selection, v
                     Text("Rellenar el lienzo (recorta los bordes)", Modifier.weight(1f), fontSize = 13.sp)
                     Switch(checked = clip.fill, onCheckedChange = { f -> vm.updateClip(clip.id) { it.copy(fill = f) } })
                 }
+                if (!clip.fill) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Fondo desenfocado en lugar de bandas negras", Modifier.weight(1f), fontSize = 13.sp)
+                        Switch(checked = clip.blurBackground, onCheckedChange = { b -> vm.updateClip(clip.id) { it.copy(blurBackground = b) } })
+                    }
+                }
                 LabeledSlider(
                     label = "Zoom",
                     valueText = "${(clip.zoom * 100).roundToInt()} %",
