@@ -216,8 +216,6 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
                             isPlaying = isPlaying,
                             selection = state.selection,
                             onSelect = { vm.select(it); panel = null },
-                onMoveItem = vm::moveItem,
-                onMoveEnd = vm::commitLive,
                             onTransform = { id, pan, zoom, rotation ->
                                 vm.updatePose(id) {
                                     it.copy(x = it.x + pan.x, y = it.y + pan.y, scale = it.scale * zoom, rotation = it.rotation + rotation)
@@ -292,6 +290,8 @@ fun EditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
                 selection = state.selection,
                 onScrub = vm::scrubTo,
                 onSelect = { vm.select(it); panel = null },
+                onMoveItem = vm::moveItem,
+                onMoveEnd = vm::commitLive,
                 modifier = Modifier.height(timelineHeight(project)),
             )
 
